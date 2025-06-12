@@ -1,0 +1,18 @@
+# ---------- language-agnostic ----------
+*.log
+*.tmp
+*.xml
+*.grd
+*.png
+*.jpg
+*.nc
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# ---------- VSCode / JetBrains ----------
+.vscode/
+.idea/
