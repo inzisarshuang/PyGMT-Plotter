@@ -47,16 +47,16 @@ def main():
         with rasterio.open(out_tif, "w", **meta) as dst:
             dst.write(sum_arr, 1)
 
-    # 使用示例
-    #add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="any")
-    add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="all")
-    with rasterio.open("S1_AS_Add.tif") as src:
-        arr = src.read(1).astype(">f4")    # 读一波段并转为 大端float32
+    # # 使用示例
+    # #add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="any")
+    # add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="all")
+    # with rasterio.open("S1_AS_Add.tif") as src:
+    #     arr = src.read(1).astype(">f4")    # 读一波段并转为 大端float32
 
-    # 如果原来有 nodata，还可 data[arr == src.nodata] = np.nan
+    # # 如果原来有 nodata，还可 data[arr == src.nodata] = np.nan
 
-    # 直接写出最纯二进制流（按行连续、无 header）
-    arr.tofile("/media/user/新加卷1/20241205_IGEO_paper1/S1Reault_draw/ascending/Norcia_as/1/mean_v_dinsar.utm")
+    # # 直接写出最纯二进制流（按行连续、无 header）
+    # arr.tofile("/media/user/新加卷1/20241205_IGEO_paper1/S1Reault_draw/ascending/Norcia_as/1/mean_v_dinsar.utm")
 
 
     # 初始化剖面提取器
@@ -70,17 +70,17 @@ def main():
     S1_LOS ="S1_AS_Visso.tif"
     S1_LOS = "S1_AS_All.tif"
     S1_LOS = "S1_AS_Add.tif"
-    S1_LOS = "S1_AS_Mask.tif"
+    S1_LOS = "data/S1_AS_Mask.tif"
     S1_LOS_grd = "S1_AS_Norcia.grd"     # 输出 GRD 文件名
     S1_LOS_grd = "S1_AS_Visso.grd"
     S1_LOS_grd = "S1_AS_All.grd"
     S1_LOS_grd = "S1_AS_Add.grd"
-    S1_LOS_grd = "S1_AS_Mask.grd"
+    S1_LOS_grd = "data/S1_AS_Mask.grd"
     region = extractor.load_tif_to_grd(S1_LOS, S1_LOS_grd, scale=1)
     
     # TXT 数据转换：读取 TXT 文件并转换为 GRD 文件（单位转换在模块内处理） ``
-    ALOS2_LOS = "ALOS2_AS.tif.xyz"   # 替换为实际的 TXT 文件路径
-    ALOS2_LOS_grd = "ALOS2_AS.grd"       # 输出 GRD 文件名（TXT数据）
+    ALOS2_LOS = "data/ALOS2_AS.tif.xyz"   # 替换为实际的 TXT 文件路径
+    ALOS2_LOS_grd = "data/ALOS2_AS.grd"       # 输出 GRD 文件名（TXT数据）
     region = extractor.load_txt_to_grd(ALOS2_LOS, ALOS2_LOS_grd, scale=0.01)
 
     # # 读取POT结果
