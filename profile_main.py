@@ -1,63 +1,9 @@
 # main.py
 import numpy as np
-import rasterio
 from profile_extractor import ProfileExtractor
 from profile_plotter import ProfilePlotter
 
 def main():
-
-    def add_tifs(tif1, tif2, out_tif, mode):
-        """
-        tif1, tif2: 输入两幅 GeoTIFF 路径
-        out_tif: 输出路径
-        mode: "any" 或 "all"
-        - "any": 只要一方是 nodata 就掩 (mask = nan1 | nan2)
-        - "all": 只有两方都是 nodata 才掩 (mask = nan1 & nan2)
-        """
-        with rasterio.open(tif1) as src1, rasterio.open(tif2) as src2:
-            meta = src1.meta.copy()
-            nd1 = src1.nodata
-            nd2 = src2.nodata
-
-            arr1 = src1.read(1).astype("float32")
-            arr2 = src2.read(1).astype("float32")
-
-        # 把 nodata 标记成 NaN
-        if nd1 is not None:
-            arr1[arr1 == nd1] = np.nan
-        if nd2 is not None:
-            arr2[arr2 == nd2] = np.nan
-
-        # 构造掩膜
-        nan1 = np.isnan(arr1)
-        nan2 = np.isnan(arr2)
-        if mode == "any":
-            mask = nan1 | nan2
-        elif mode == "all":
-            mask = nan1 & nan2
-        else:
-            raise ValueError("mode must be 'any' or 'all'")
-
-        # 相加，然后再掩膜
-        sum_arr = arr1 + arr2
-        sum_arr[mask] = np.nan
-
-        # 写出
-        meta.update(dtype="float32", nodata=np.nan)
-        with rasterio.open(out_tif, "w", **meta) as dst:
-            dst.write(sum_arr, 1)
-
-    # # 使用示例
-    # #add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="any")
-    # add_tifs("S1_AS_Norcia.tif", "S1_AS_Visso.tif", "S1_AS_Add.tif", mode="all")
-    # with rasterio.open("S1_AS_Add.tif") as src:
-    #     arr = src.read(1).astype(">f4")    # 读一波段并转为 大端float32
-
-    # # 如果原来有 nodata，还可 data[arr == src.nodata] = np.nan
-
-    # # 直接写出最纯二进制流（按行连续、无 header）
-    # arr.tofile("/media/user/新加卷1/20241205_IGEO_paper1/S1Reault_draw/ascending/Norcia_as/1/mean_v_dinsar.utm")
-
 
     # 初始化剖面提取器
     extractor = ProfileExtractor()
