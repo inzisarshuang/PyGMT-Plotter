@@ -1,11 +1,9 @@
 # ---------- language-agnostic ----------
-*.log
-*.tmp
-*.xml
 *.grd
+*.nc
 *.png
 *.jpg
-*.nc
+*.bin
 
 # ---------- Python ----------
 __pycache__/
@@ -13,6 +11,5 @@ __pycache__/
 .venv/
 env/
 
-# ---------- VSCode / JetBrains ----------
+# ---------- VSCode ----------
 .vscode/
-.idea/

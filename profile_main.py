@@ -4,35 +4,30 @@ from profile_extractor import ProfileExtractor
 from profile_plotter import ProfilePlotter
 
 def main():
-
-    # 初始化剖面提取器
-    extractor = ProfileExtractor()
     
     # ----------------------------
     # 1. 数据加载与转换
     # ----------------------------
+    # 初始化剖面提取器
+    extractor = ProfileExtractor()
     # TIF 数据转换：读取 TIF 文件并转换为 GRD 文件
-    S1_LOS = "S1_AS_Norcia.tif"
-    S1_LOS ="S1_AS_Visso.tif"
-    S1_LOS = "S1_AS_All.tif"
-    S1_LOS = "S1_AS_Add.tif"
+    S1_LOS = "data/S1_AS_Norcia.tif"
+    S1_LOS ="data/S1_AS_Visso.tif"
+    S1_LOS = "data/S1_AS_All.tif"
+    S1_LOS = "data/S1_AS_Add.tif"
     S1_LOS = "data/S1_AS_Mask.tif"
-    S1_LOS_grd = "S1_AS_Norcia.grd"     # 输出 GRD 文件名
-    S1_LOS_grd = "S1_AS_Visso.grd"
-    S1_LOS_grd = "S1_AS_All.grd"
-    S1_LOS_grd = "S1_AS_Add.grd"
+    # 输出 GRD 文件名
+    S1_LOS_grd = "data/S1_AS_Norcia.grd"
+    S1_LOS_grd = "data/S1_AS_Visso.grd"
+    S1_LOS_grd = "data/S1_AS_All.grd"
+    S1_LOS_grd = "data/S1_AS_Add.grd"
     S1_LOS_grd = "data/S1_AS_Mask.grd"
     region = extractor.load_tif_to_grd(S1_LOS, S1_LOS_grd, scale=1)
     
     # TXT 数据转换：读取 TXT 文件并转换为 GRD 文件（单位转换在模块内处理） ``
-    ALOS2_LOS = "data/ALOS2_AS.tif.xyz"   # 替换为实际的 TXT 文件路径
+    ALOS2_LOS = "data/ALOS2_AS.txt"   # 替换为实际的 TXT 文件路径
     ALOS2_LOS_grd = "data/ALOS2_AS.grd"       # 输出 GRD 文件名（TXT数据）
     region = extractor.load_txt_to_grd(ALOS2_LOS, ALOS2_LOS_grd, scale=0.01)
-
-    # # 读取POT结果
-    # S1_POT = "S1_AS_POT.tif"       
-    # S1_POT_grd = "S1_AS_POT.grd" 
-    # region = extractor.load_tif_to_grd(S1_POT, S1_POT_grd, scale=100)
     
     # ----------------------------
     # 2. 定义剖线轨迹
@@ -50,20 +45,12 @@ def main():
         (13.35, 42.819),
         (13.35, 42.77)
     ]
-    
     # 每条剖线需要生成的采样点数量
     num_points = 100  
     # 剖线名称列表
     pointnames = ["A", "B", "C", "D"]
-    # 字典存储轨迹采样点数组，键是剖线名称
-    tracks = {}
-    for name, start, end in zip(pointnames, start_coords, end_coords):
-        # 分别对经度和纬度生成等间距采样点
-        lons = np.linspace(start[0], end[0], num_points)
-        lats = np.linspace(start[1], end[1], num_points)
-        # 合并为二维数组，每行 [lon, lat]
-        track = np.column_stack((lons, lats))
-        tracks[name] = track
+    # 生成剖线轨迹
+    tracks = extractor.generate_tracks(start_coords=start_coords, end_coords=end_coords, num_points=num_points, pointnames=pointnames)
 
 
     # # ----------------------------
@@ -71,27 +58,27 @@ def main():
     # # ----------------------------
     # # 初始化绘图器
     plotter = ProfilePlotter()
-    # # 绘制单个剖面图
-    # # AA
-    # profileAA = extractor.extract_profile(S1_LOS_grd, tracks["A"])
-    # plotter.plot_profile(profileAA, output_file="S1_AS_profileAA.png", label="S1", title="Profile Curve Line AA")
-    # profileAA = extractor.extract_profile(ALOS2_LOS_grd, tracks["A"])
-    # plotter.plot_profile(profileAA, output_file="ALOS2_AS_profileAA.png", label="ALOS2", title="Profile Curve Line AA")
-    # # BB
-    # profileBB = extractor.extract_profile(S1_LOS_grd, tracks["B"])
-    # plotter.plot_profile(profileBB, output_file="S1_AS_profileBB.png", label="S1", title="Profile Curve Line BB")
-    # profileBB = extractor.extract_profile(ALOS2_LOS_grd, tracks["B"])
-    # plotter.plot_profile(profileBB, output_file="ALOS2_AS_profileBB.png", label="ALOS2", title="Profile Curve Line BB")
-    # # CC
-    # profileCC = extractor.extract_profile(S1_LOS_grd, tracks["C"])
-    # plotter.plot_profile(profileCC, output_file="S1_AS_profileCC.png", label="S1", title="Profile Curve Line CC") 
-    # profileCC = extractor.extract_profile(ALOS2_LOS_grd, tracks["C"])
-    # plotter.plot_profile(profileCC, output_file="ALOS2_AS_profileCC.png", label="ALOS2", title="Profile Curve Line CC")
-    # # DD
-    # profileDD = extractor.extract_profile(S1_LOS_grd, tracks["D"])
-    # plotter.plot_profile(profileDD, output_file="S1_AS_profileDD.png", label="S1" ,title="Profile Curve Line DD") 
-    # profileDD = extractor.extract_profile(ALOS2_LOS_grd, tracks["D"])
-    # plotter.plot_profile(profileDD, output_file="ALOS2_AS_profileDD.png", label="ALOS2", title="Profile Curve Line DD")
+    # 绘制单个剖面图
+    # AA
+    profileAA = extractor.extract_profile(S1_LOS_grd, tracks["A"])
+    plotter.plot_profile(profileAA, output_file="S1_AS_profileAA.png", label="S1", title="Profile Curve Line AA")
+    profileAA = extractor.extract_profile(ALOS2_LOS_grd, tracks["A"])
+    plotter.plot_profile(profileAA, output_file="ALOS2_AS_profileAA.png", label="ALOS2", title="Profile Curve Line AA")
+    # BB
+    profileBB = extractor.extract_profile(S1_LOS_grd, tracks["B"])
+    plotter.plot_profile(profileBB, output_file="S1_AS_profileBB.png", label="S1", title="Profile Curve Line BB")
+    profileBB = extractor.extract_profile(ALOS2_LOS_grd, tracks["B"])
+    plotter.plot_profile(profileBB, output_file="ALOS2_AS_profileBB.png", label="ALOS2", title="Profile Curve Line BB")
+    # CC
+    profileCC = extractor.extract_profile(S1_LOS_grd, tracks["C"])
+    plotter.plot_profile(profileCC, output_file="S1_AS_profileCC.png", label="S1", title="Profile Curve Line CC") 
+    profileCC = extractor.extract_profile(ALOS2_LOS_grd, tracks["C"])
+    plotter.plot_profile(profileCC, output_file="ALOS2_AS_profileCC.png", label="ALOS2", title="Profile Curve Line CC")
+    # DD
+    profileDD = extractor.extract_profile(S1_LOS_grd, tracks["D"])
+    plotter.plot_profile(profileDD, output_file="S1_AS_profileDD.png", label="S1" ,title="Profile Curve Line DD") 
+    profileDD = extractor.extract_profile(ALOS2_LOS_grd, tracks["D"])
+    plotter.plot_profile(profileDD, output_file="ALOS2_AS_profileDD.png", label="ALOS2", title="Profile Curve Line DD")
     
     # ----------------------------
     # 4. 绘制同一条剖线在不同形变结果上面的对比变化图
