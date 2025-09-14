@@ -48,22 +48,22 @@ output_psi = "result/PSI.png"
 
 # ===================== 4) 出图（DEM 底图 + 形变叠加 + 指北针 + 比例尺 + 色标） =====================
 # 保持全局的默认绘图参数
-region_sigma = plotter.region_from_grid(grd_sbas_allregion)
+region_sbas_allregion = plotter.region_from_grid(grd_sbas_allregion)
 (plotter
     .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
-    .draw_basemap(region=region_sigma, projection=projection, title="Deformation: SBAS_AllRegion")
-    .draw_dem(dem_tif=tif_dem, region=region_sigma, projection=projection)
+    .draw_basemap(region=region_sbas_allregion, projection=projection, title="Deformation: SBAS_AllRegion")
+    .draw_dem(dem_tif=tif_dem, region=region_sbas_allregion, projection=projection)
     .draw_deformation(
         data_grd=grd_sbas_allregion,
         cpt=cpt_saga,
-        region=region_sigma,
+        region=region_sbas_allregion,
         projection=projection,
         bar_min=-0.06, bar_max=0.06,   # 色带显示范围
         alpha=25                       # 图层透明度（0~100）
     )
     .add_colorbar_bottom()
-    .add_scale_top(region=region_sigma, projection=projection)
-    .add_rose_right(region=region_sigma, projection=projection)
+    .add_scale_top(region=region_sbas_allregion, projection=projection)
+    .add_rose_right(region=region_sbas_allregion, projection=projection)
     .save(output_sbas_allregion)
 )
 
