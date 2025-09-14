@@ -4,6 +4,7 @@
 *.png
 *.jpg
 *.bin
+*.xml
 
 # ---------- Python ----------
 __pycache__/
@@ -12,4 +13,4 @@ __pycache__/
 env/
 
 # ---------- VSCode ----------
-.vscode/
+#.vscode/
