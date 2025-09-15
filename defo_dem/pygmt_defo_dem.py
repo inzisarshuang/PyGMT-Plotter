@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 lib_path = Path(__file__).resolve().parents[1] / "lib" # 自定义库路径
+cpt_path = Path(__file__).resolve().parents[1] / "cpt" # 自定义库路径
 sys.path.append(str(lib_path)) # 添加自定义库路径到系统路径
 
 from pygmt_plotter import PyGMTPlotter
@@ -39,7 +40,8 @@ projection  = "M8i"
 # 地形数据
 tif_dem = "data/DEM.tif"
 # 色标文件
-cpt_saga = "data/saga-01.cpt"
+cpt_saga = cpt_path/"saga-01.cpt"
+cpt_dem = "gray"
 # 图片输出路径
 (Path(__file__).resolve().parent / "result").mkdir(parents=True, exist_ok=True)
 output_sbas_allregion = "result/SBAS_AllRegion.png"
@@ -52,7 +54,13 @@ region_sbas_allregion = plotter.region_from_grid(grd_sbas_allregion)
 (plotter
     .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
     .draw_basemap(region=region_sbas_allregion, projection=projection, title="Deformation: SBAS_AllRegion")
-    .draw_dem(dem_tif=tif_dem, region=region_sbas_allregion, projection=projection)
+    .draw_dem(
+        dem_tif=tif_dem, 
+        cpt=cpt_dem,
+        region=region_sbas_allregion, 
+        projection=projection,
+        bar_min=700, bar_max=2300,   # 色带显示范围
+    )   
     .draw_deformation(
         data_grd=grd_sbas_allregion,
         cpt=cpt_saga,
@@ -77,7 +85,13 @@ region_sbas = plotter.region_from_grid(grd_sbas)
 (plotter
     .new()  
     .draw_basemap(region=region_sbas, projection=projection, title="Deformation: SBAS")
-    .draw_dem(dem_tif=tif_dem, region=region_sbas, projection=projection)
+    .draw_dem(
+        dem_tif=tif_dem, 
+        cpt=cpt_dem,
+        region=region_sbas, 
+        projection=projection,
+        bar_min=700, bar_max=2300,   # 色带显示范围
+    )   
     .draw_deformation(
         data_grd=grd_sbas,
         cpt=cpt_saga,
@@ -99,7 +113,13 @@ region_psi = plotter.region_from_grid(grd_psi)
 (plotter
     .new()  # 应用新的默认样式
     .draw_basemap(region=region_psi, projection=projection, title="Deformation: PSI")
-    .draw_dem(dem_tif=tif_dem, region=region_psi, projection=projection)
+    .draw_dem(
+        dem_tif=tif_dem, 
+        cpt=cpt_dem,
+        region=region_psi, 
+        projection=projection,
+        bar_min=700, bar_max=2300,   # 色带显示范围
+    )   
     .draw_deformation(
         data_grd=grd_psi,
         cpt=cpt_saga,
@@ -113,3 +133,4 @@ region_psi = plotter.region_from_grid(grd_psi)
     .add_rose_right(region=region_psi, projection=projection)
     .save(output_psi)
 )
+

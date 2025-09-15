@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from profile_extractor import ProfileExtractor
 
+cpt_path = Path(__file__).resolve().parents[1] / "cpt" # 自定义库路径
 lib_path = Path(__file__).resolve().parents[1] / "lib" # 自定义库路径
 sys.path.append(str(lib_path)) # 添加自定义库路径到系统路径
 from pygmt_plotter import PyGMTPlotter # 从库中导入绘图类
@@ -73,7 +74,8 @@ projection  = "M8i"
 # 地形数据
 tif_dem = "data/DEM.tif"
 # 色标文件
-cpt = "data/seismic.cpt"
+cpt_seismic = cpt_path/"seismic.cpt"
+cpt_dem = "gray"
 # 图片输出路径
 (Path(__file__).resolve().parent / "result").mkdir(parents=True, exist_ok=True) # 创建结果目录
 output_s1_as_norcia = "result/S1_AS_Norcia.png"
@@ -92,10 +94,16 @@ output_profileDD_scatter = "result/Profile_DD_scatter.png"
 (plotter
     .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
     .draw_basemap(region=region_s1_as_norcia, projection=projection, title="Deformation: S1_AS_Norcia")
-    .draw_dem(dem_tif=tif_dem, region=region_s1_as_norcia, projection=projection)
+    .draw_dem(
+        dem_tif=tif_dem, 
+        cpt=cpt_dem,
+        region=region_s1_as_norcia, 
+        projection=projection,
+        bar_min=700, bar_max=2300,   # 色带显示范围
+    )   
     .draw_deformation(
         data_grd=grd_s1_as_norcia,
-        cpt=cpt,
+        cpt=cpt_seismic,
         region=region_s1_as_norcia,
         projection=projection,
         bar_min=-0.1, bar_max=0.1,   # 色带显示范围
@@ -112,10 +120,16 @@ output_profileDD_scatter = "result/Profile_DD_scatter.png"
 (plotter
     .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
     .draw_basemap(region=region_alos2_as, projection=projection, title="Deformation: ALOS2_AS")
-    .draw_dem(dem_tif=tif_dem, region=region_alos2_as, projection=projection)
+    .draw_dem(
+        dem_tif=tif_dem, 
+        cpt=cpt_dem,
+        region=region_alos2_as, 
+        projection=projection,
+        bar_min=700, bar_max=2300,   # 色带显示范围
+    )   
     .draw_deformation(
         data_grd=grd_alos2_as,
-        cpt=cpt,
+        cpt=cpt_seismic,
         region=region_alos2_as,
         projection=projection,
         bar_min=-0.1, bar_max=0.1,   # 色带显示范围

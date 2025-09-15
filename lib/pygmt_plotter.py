@@ -338,6 +338,9 @@ class PyGMTPlotter:
         dem_tif: str,
         region: List[float],
         projection: str,
+        cpt: str = "gray",
+        bar_min: float = 700,
+        bar_max: float = 2500,
         dem_grd: str = "DEM.grd",
         demgradient_grd: str = "DEMgradiant.grd",
     ) -> "PyGMTPlotter":
@@ -367,7 +370,12 @@ class PyGMTPlotter:
                 gdal.Translate(dem_grd, dem_tif, format="GSBG")
             pygmt.grdgradient(grid=dem_grd, outgrid=demgradient_grd, azimuth=0)
 
-        pygmt.makecpt(cmap="gray", series=[-6000, 6000, 300], reverse=True)
+        pygmt.makecpt(
+            cmap=cpt,
+            series=[bar_min, bar_max],
+            background=True,
+            reverse=True,
+        )
         self.fig.grdimage(
             grid=dem_grd,
             region=region,
