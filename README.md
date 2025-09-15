@@ -75,7 +75,7 @@ Detailed examples are provided in each task folder.
 
 ## Author 作者 
 
-- Name: Yilun Tan
+- Name: Yilun Tan  
 姓名：谭逸伦
 
 - Email: csuyiluntan@gmail.com, yiluntancsu@qq.com  
