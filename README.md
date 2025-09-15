@@ -1,23 +1,17 @@
 # PyGMT-Plotter
 
-A lightweight plotting toolkit built on PyGMT.  
-基于 PyGMT 的轻量级绘图工具箱。
-
-It provides a chainable plotting class for general geographic plotting.  
-提供一个可链式调用的绘图类，用于通用地理绘图。
-
-Task-specific scripts are organized in separate folders and shared utilities live in `lib/`.  
-任务脚本按功能分文件夹组织，共享工具置于 `lib/`。
+A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting class for general geographic plotting. Task-specific scripts are organized in separate folders and shared library live in `lib/`.   
+基于 PyGMT 的轻量级绘图工具箱。提供一个可链式调用的绘图类，用于通用地理绘图。任务脚本按功能分文件夹组织，共享库置于 `lib/`。
 
 ---
 
 ## Features 功能
 
 - Chainable plotting class (compose basemap, grdimage, colorbar, scale, markers, profiles, etc.).  
-链式绘图类（可组合 basemap、grdimage、colorbar、比例尺、标记、剖面等）。
+链式绘图类，选择 pygmt.Figure 作为类对象，通过链式调用逐个叠加绘制好的图形要素。
 
 - Static helper tools for data preprocessing and raster conversion (TIF/TXT → GRD).  
-用于数据预处理与栅格转换的静态辅助工具（如TIF/TXT → GRD）。
+用于数据预处理与转换的静态辅助工具（如转换 TIF/TXT 格式到 GRD 格式）。
 
 - Project organized by task folders to ease maintenance and reuse.  
 项目按任务文件夹组织，便于维护与复用。
@@ -57,3 +51,42 @@ Example (conda):
 ```bash
 conda env create -f environment.yml
 conda activate envPlot
+```
+
+---
+
+## Usage
+使用（简短指引）
+
+Import the shared library and use the chainable API in your scripts.
+在脚本中导入共享库并使用链式 API 组合绘图。
+
+Example:
+示例：
+
+```bash
+from pygmt_plotter import PyGMTPlotter
+plotter = PyGMTPlotter()
+```
+
+Detailed examples are provided in each task folder.
+详细示例请参考各任务文件夹内的演示脚本。
+
+---
+
+## Author 作者 
+
+Name: Yilun Tan
+姓名：谭逸伦
+
+Email: csuyiluntan@gmail.com, yiluntancsu@qq.com
+邮箱：csuyiluntan@gmail.com，yiluntancsu@qq.com
+
+Affiliation: SIGMA3D Lab, School of Geosciences and Info-Physics, Central South University
+单位：中南大学地球科学与信息物理学院 SIGMA3D 实验室
+
+Created: 2025-09-15
+创建时间：2025-09-15
+
+Short summary: A thin wrapper PyGMT plotter enabling chain-style composition and export.
+简短说明：该类为封装的 PyGMT 绘图器，通过链式调用完成图形的组合绘制与保存。
