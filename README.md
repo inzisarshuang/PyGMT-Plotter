@@ -23,6 +23,9 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 - `lib/` — shared utilities (e.g. `pygmt_plotter.py`) containing reusable classes and functions.  
 `lib/` — 共享工具（例如 `pygmt_plotter.py`），包含可复用的类与函数。
 
+- `cpt/` — shared cpts containing reusable cpt files.  
+`cpt/` — 共享色标，包含可复用的色标文件。
+
 - `defo_dem/` — task scripts for deformation + DEM plotting (contains `data/` and `result/`).  
 `defo_dem/` — 形变 + DEM 绘图任务脚本（包含 `data/` 与 `result/`）。
 
