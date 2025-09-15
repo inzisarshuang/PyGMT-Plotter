@@ -57,10 +57,10 @@ conda activate envPlot
 
 ## Usage 使用
 
-Import the shared library and use the chainable API in your scripts.
+Import the shared library and use the chainable API in your scripts.  
 在脚本中导入共享库并使用链式 API 组合绘图。
 
-Example:
+Example:  
 示例：
 
 ```python
@@ -68,7 +68,7 @@ from pygmt_plotter import PyGMTPlotter
 plotter = PyGMTPlotter()
 ```
 
-Detailed examples are provided in each task folder.
+Detailed examples are provided in each task folder.  
 详细示例请参考各任务文件夹内的演示脚本。
 
 ---
@@ -78,14 +78,14 @@ Detailed examples are provided in each task folder.
 - Name: Yilun Tan
 姓名：谭逸伦
 
-- Email: csuyiluntan@gmail.com, yiluntancsu@qq.com
+- Email: csuyiluntan@gmail.com, yiluntancsu@qq.com  
 邮箱：csuyiluntan@gmail.com，yiluntancsu@qq.com
 
-- Affiliation: SIGMA3D Lab, School of Geosciences and Info-Physics, Central South University
+- Affiliation: SIGMA3D Lab, School of Geosciences and Info-Physics, Central South University  
 单位：中南大学地球科学与信息物理学院 SIGMA3D 实验室
 
-- Created: 2025-09-15
+- Created: 2025-09-15  
 创建时间：2025-09-15
 
-- Short summary: A thin wrapper PyGMT plotter enabling chain-style composition and export.
+- Short summary: A thin wrapper PyGMT plotter enabling chain-style composition and export.  
 简短说明：该类为封装的 PyGMT 绘图器，通过链式调用完成图形的组合绘制与保存。
