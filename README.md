@@ -1,7 +1,7 @@
 # PyGMT-Plotter
 
 A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting class for general geographic plotting. Task-specific scripts are organized in separate folders and shared library live in `lib/`.   
-基于 PyGMT 的轻量级绘图工具箱。提供一个可链式调用的绘图类，用于通用地理绘图。任务脚本按功能分文件夹组织，共享库置于 `lib/`。
+基于 PyGMT 的轻量级绘图工具箱，提供一个可链式调用的绘图类，用于通用地理绘图，任务脚本按功能分文件夹组织，共享库置于 `lib/`。
 
 ---
 
