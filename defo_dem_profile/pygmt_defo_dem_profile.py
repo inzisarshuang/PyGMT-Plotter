@@ -5,6 +5,7 @@ from profile_extractor import ProfileExtractor
 
 cpt_path = Path(__file__).resolve().parents[1] / "cpt" # 自定义库路径
 lib_path = Path(__file__).resolve().parents[1] / "lib" # 自定义库路径
+sys.path.append(str(lib_path)) # 添加自定义库路径到系统路径
 
 from pygmt_plotter import PyGMTPlotter # 从库中导入绘图类
 
