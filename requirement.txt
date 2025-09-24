@@ -1,0 +1,8 @@
+# Required libraries 需要安装的库
+pygmt 
+gmt 
+gdal 
+rasterio 
+pyproj 
+numpy 
+pandas

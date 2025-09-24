@@ -52,8 +52,12 @@ Example (conda):
 示例（conda）：
 
 ```bash
-conda env create -f environment.yml
-conda activate envPlot
+# 1、新建并激活环境
+conda create -n envPlot python=3.10 -y 
+conda activate envPlot 
+
+# 2、原生库 + Python 包
+conda install -c conda-forge pygmt gmt gdal rasterio pyproj numpy pandas -y 
 ```
 
 ---

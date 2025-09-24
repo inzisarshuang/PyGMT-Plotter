@@ -1,11 +1,3 @@
-# ---------- language-agnostic ----------
-*.grd
-*.nc
-*.png
-*.jpg
-*.bin
-*.xml
-
 # ---------- Python ----------
 __pycache__/
 *.py[cod]
@@ -14,3 +6,15 @@ env/
 
 # ---------- VSCode ----------
 #.vscode/
+
+# ---------- intermediate files ----------
+*.grd
+*.nc
+*.png
+*.jpg
+*.bin
+*.xml
+
+# ---------- MacOS ----------
+.DS_Store
+
