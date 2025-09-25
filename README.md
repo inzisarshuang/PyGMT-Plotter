@@ -88,8 +88,8 @@ Detailed examples are provided in each task folder.
 - Email: csuyiluntan@gmail.com, yiluntancsu@qq.com  
 邮箱：csuyiluntan@gmail.com，yiluntancsu@qq.com
 
-- Affiliation: SIGMA3D Lab, School of Geosciences and Info-Physics, Central South University  
-单位：中南大学地球科学与信息物理学院 SIGM@-3D 实验室
+- Affiliation: SIGM@3D Lab, School of Geosciences and Info-Physics, Central South University  
+单位：中南大学地球科学与信息物理学院 SIGM@3D 实验室
 
 - Created: 2025-09-15  
 创建时间：2025-09-15
