@@ -33,7 +33,7 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 `defo_dem_profile/` — 形变/DEM 与剖面抽取绘图任务（包含 `data/` 与 `result/`）。
 
 - `.vscode/`, `.env` — optional editor / runtime configs for local development.  
-`.vscode/`、`.env` — 可选的编辑器 / 运行时配置，供本地开发使用。
+`.vscode/`, `.env` — 可选的编辑器 / 运行时配置，供本地开发使用。
 
 - `environment.yml` — environment specification (dependencies).  
 `environment.yml` — 环境依赖说明文件。
