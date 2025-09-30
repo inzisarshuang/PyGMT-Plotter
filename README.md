@@ -20,23 +20,21 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 
 ## Repository overview 仓库总览
 
-- `lib/` — shared utilities (e.g. `pygmt_plotter.py`) containing reusable classes and functions.  
-`lib/` — 共享工具（例如 `pygmt_plotter.py`），包含可复用的类与函数。
+project-root/
+├─ lib/                       # shared libraries (e.g., pygmt_plotter.py)              / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
+│  └─ pygmt_plotter.py        # PyGMT core library                                     / PyGMT 核心库
+├─ cpt/                       # shared color palettes (CPT files)                      / 共享色标（CPT 文件）
+├─ defo_dem/                  # task scripts for deformation + DEM plotting            / 形变叠加 DEM 的绘图任务脚本（包含 data/ 与 result/）
+│  ├─ data/                   # input data (often large; gitignored)                   / 输入数据（通常较大，建议加入 .gitignore）
+│  └─ result/                 # outputs (often large; gitignored)                      / 输出结果（通常较大，建议加入 .gitignore）
+│  └─ defo_dem.py             # example script                                         / 示例脚本文件
+├─ defo_dem_profile/          # deformation/DEM + profile extraction & plotting        / 形变叠加 DEM 的绘图与剖面抽取任务（包含 data/ 与 result/）
+│  ├─ data/                   # input data (often large; gitignored)                   / 输入数据（通常较大，建议加入 .gitignore）
+│  └─ result/                 # outputs (often large; gitignored)                      / 输出结果（通常较大，建议加入 .gitignore）
+│  └─ defo_dem_profile.py     # example script                                         / 示例脚本文件
+├─ .vscode/                   # optional editor configs for local development          / 可选的本地开发编辑器配置
+└─ requirement.txt            # environment specification (dependencies)               / 环境依赖说明文件
 
-- `cpt/` — shared cpts containing reusable cpt files.  
-`cpt/` — 共享色标，包含可复用的色标文件。
-
-- `defo_dem/` — task scripts for deformation + DEM plotting (contains `data/` and `result/`).  
-`defo_dem/` — 形变 + DEM 绘图任务脚本（包含 `data/` 与 `result/`）。
-
-- `defo_dem_profile/` — task scripts for deformation/DEM + profile extraction and plotting (contains `data/` and `result/`).  
-`defo_dem_profile/` — 形变/DEM 与剖面抽取绘图任务（包含 `data/` 与 `result/`）。
-
-- `.vscode/`, `.env` — optional editor / runtime configs for local development.  
-`.vscode/`, `.env` — 可选的编辑器 / 运行时配置，供本地开发使用。
-
-- `environment.yml` — environment specification (dependencies).  
-`environment.yml` — 环境依赖说明文件。
 
 > Note: `data/` and `result/` often contain large files; include them in `.gitignore`.  
 > 说明：`data/` 与 `result/` 通常包含大文件，建议在 `.gitignore` 中忽略。
