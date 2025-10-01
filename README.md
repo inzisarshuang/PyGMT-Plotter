@@ -34,7 +34,9 @@ project-root/
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
 │  └─ pygmt_defo_dem_profile.py     # example task script                                / 示例脚本
 ├─ .vscode/                         # optional editor configs for local development      / 可选的本地开发编辑器配置
-└─ requirements.txt                 # environment dependencies specification             / 环境依赖说明文件
+├─ requirements.txt                 # environment dependencies specification             / 环境依赖说明文件
+├─ .gitignore                       # ignore rules for large data, results, secrets      / Git 忽略规则：大文件、结果与敏感信息
+└─ README.md                        # project overview, setup, and usage guide           / 项目总览、环境配置与使用指南
 ```
 
 > Note: `data/` and `result/` often contain large files; include them in `.gitignore`.  
