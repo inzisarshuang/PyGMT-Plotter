@@ -20,23 +20,22 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 
 ## Repository overview 仓库总览
 
-## Repository Overview 仓库总览
-
+```
 project-root/
-├─ lib/                       # Shared libraries containing reusable classes and functions / 共享库，包含可复用的类和函数  
-│  └─ pygmt_plotter.py        # PyGMT plotting library / PyGMT 绘图库  
-├─ cpt/                       # Shared color palette files / 共享色标文件  
-├─ defo_dem/                  # Deformation + DEM plotting tasks / 形变+DEM 绘图任务  
-│  ├─ data/                   # Input data (large files, gitignored) / 输入数据（大文件，已配置 Git 忽略） 
-│  ├─ result/                 # Output results (large files, gitignored) / 输出结果（大文件，已配置 Git 忽略）
-│  └─ defo_dem.py             # Example script / 示例脚本
-├─ defo_dem_profile/          # Deformation/DEM + profile extraction & plotting tasks / 形变/DEM+剖面提取与绘图任务
-│  ├─ data/                   # Input data (large files, gitignored) / 输入数据（大文件，已配置 Git 忽略）
-│  ├─ result/                 # Output results (large files, gitignored) / 输出结果（大文件，已配置 Git 忽略）
-│  └─ defo_dem_profile.py     # Example script / 示例脚本
-├─ .vscode/                   # Optional editor configurations for local development / 可选的本地开发编辑器配置
-└─ requirements.txt           # Environment dependencies specification / 环境依赖说明文件
-
+├─ lib/                       # shared libraries (e.g., pygmt_plotter.py)          / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
+│  └─ pygmt_plotter.py        # core library for PyGMT plotting                    / PyGMT 绘图核心库
+├─ cpt/                       # shared color palette files                         / 共享色标文件
+├─ defo_dem/                  # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
+│  ├─ data/                   # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
+│  ├─ result/                 # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
+│  └─ defo_dem.py             # example task script                                / 示例脚本
+├─ defo_dem_profile/          # deformation/DEM + profile extraction & plotting    / 形变/DEM + 剖面抽取与绘图任务（含 data/ 与 result/）
+│  ├─ data/                   # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
+│  ├─ result/                 # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
+│  └─ defo_dem_profile.py     # example task script                                / 示例脚本
+├─ .vscode/                   # optional editor configs for local development      / 可选的本地开发编辑器配置
+└─ requirements.txt           # environment dependencies specification             / 环境依赖说明文件
+```
 
 > Note: `data/` and `result/` often contain large files; include them in `.gitignore`.  
 > 说明：`data/` 与 `result/` 通常包含大文件，建议在 `.gitignore` 中忽略。
