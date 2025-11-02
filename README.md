@@ -74,7 +74,8 @@ Example:
 
 ```shell
 cd plot_defo_dem
-python plot_defo_dem.py 
+python plot_defo_dem.py
+
 cd plot_defo_profile
 python plot_defo_profile.py
 ```
