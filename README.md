@@ -21,18 +21,19 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 ## Repository overview 仓库总览
 
 ```
-project-root/
+project_root/
 ├─ lib/                             # shared libraries (e.g., pygmt_plotter.py)          / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
+│  ├─ data_preprocess               # shared library for data preprocessing              / 数据预处理库
 │  └─ pygmt_plotter.py              # core library for PyGMT plotting                    / PyGMT 绘图核心库
 ├─ cpt/                             # shared color palette files                         / 共享色标文件
-├─ defo_dem/                        # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
+├─ plot_defo_dem_optic/             # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
 │  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
-│  └─ pygmt_defo_dem.py             # example task script                                / 示例脚本
+│  └─ plot_defo_dem.py              # example task script                                / 示例脚本
 ├─ defo_dem_profile/                # deformation/DEM + profile extraction & plotting    / 形变/DEM + 剖面抽取与绘图任务（含 data/ 与 result/）
 │  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
-│  └─ pygmt_defo_dem_profile.py     # example task script                                / 示例脚本
+│  └─ plot_defo_profile.py          # example task script                                / 示例脚本
 ├─ .vscode/                         # optional editor configs for local development      / 可选的本地开发编辑器配置
 ├─ requirements.txt                 # environment dependencies specification             / 环境依赖说明文件
 ├─ .gitignore                       # ignore rules for large data, results, secrets      / Git 忽略规则：大文件、结果与敏感信息
@@ -71,9 +72,11 @@ Import the shared library and use the chainable API in your scripts.
 Example:  
 示例：
 
-```python
-from pygmt_plotter import PyGMTPlotter
-plotter = PyGMTPlotter()
+```shell
+cd plot_defo_dem
+python plot_defo_dem.py 
+cd plot_defo_profile
+python plot_defo_profile.py
 ```
 
 Detailed examples are provided in each task folder.  

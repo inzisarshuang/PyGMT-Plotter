@@ -21,6 +21,7 @@ import rasterio
 import numpy as np
 import pandas as pd
 from osgeo import gdal
+from pyproj import Geod
 
 # 默认基础绘图参数
 DEFAULTS = dict(
@@ -136,7 +137,7 @@ class PyGMTPlotter:
     # ------------------------- 预处理与实用工具方法 -------------------------
 
     @staticmethod
-    def region_from_grid(grid_path: str) -> List[float]:
+    def region_from_grd(grid_path: str) -> List[float]:
         """
         从栅格文件中解析出区域范围 region = [xmin, xmax, ymin, ymax]。
         Parse region [xmin, xmax, ymin, ymax] from a grid via pygmt.grdinfo.
@@ -171,7 +172,7 @@ class PyGMTPlotter:
         raise ValueError("无法解析区域范围信息")
 
     @staticmethod
-    def load_tif_to_grd(
+    def tif2grd(
         tif_path: str,
         grd_path: str,
         scale: float = 1.0,
@@ -239,7 +240,7 @@ class PyGMTPlotter:
         return region
 
     @staticmethod
-    def load_txt_to_grd(
+    def txt2grd(
         txt_path: str,
         grd_path: str,
         scale: float = 1.0,
@@ -286,10 +287,112 @@ class PyGMTPlotter:
         )
         print(f"TXT 转换为 GRD 完成: {grd_path}")
         return region
+    
+    @staticmethod
+    def generate_tracks(
+        start_coords: List[Tuple[float, float]],
+        end_coords: List[Tuple[float, float]],
+        num_points: int = 100,
+        pointnames: List[str] = None
+    ) -> Dict[str, np.ndarray]:
+        """
+        生成剖线采样轨迹。
+        Generate evenly‐spaced sampling tracks between start and end coordinates.
+
+        参数 (Parameters)
+        ----------
+        start_coords : List[Tuple[float, float]]
+            剖线起点经纬度列表，每项为 (lon, lat)。
+            List of start coordinates as (lon, lat) tuples.
+        end_coords : List[Tuple[float, float]]
+            剖线终点经纬度列表，每项为 (lon, lat)。
+            List of end coordinates as (lon, lat) tuples.
+        num_points : int, optional
+            每条剖线生成的采样点数量（默认 100）。
+            Number of sampling points per track (default 100).
+        pointnames : List[str], optional
+            每条剖线的名称列表（默认 None，则自动生成 A, B, C…）。
+            Names for each track (if None, generates ['A', 'B', ...]).
+
+        返回 (Returns)
+        -------
+        Dict[str, np.ndarray]
+            字典：键为剖线名称，值为形状 (num_points, 2) 的 [lon, lat] 数组。
+            Dict mapping each name to an (num_points, 2) array of [lon, lat] points.
+        """
+        # 1. 如果未提供名称，则自动生成 A, B, C… / Auto‐generate names if not provided
+        if pointnames is None:
+            pointnames = [chr(ord("A") + i) for i in range(len(start_coords))]
+
+        tracks: Dict[str, np.ndarray] = {}
+        # 2. 对每条剖线，生成等间距经纬度并合并 / For each track, generate spaced lons/lats and stack
+        for name, start, end in zip(pointnames, start_coords, end_coords):
+            # 2.1 等间距插值经度 / interpolate longitudes
+            lons = np.linspace(start[0], end[0], num_points)
+            # 2.2 等间距插值纬度 / interpolate latitudes
+            lats = np.linspace(start[1], end[1], num_points)
+            # 2.3 合并为二维数组，每行 [lon, lat] / stack into (num_points, 2) array
+            track = np.column_stack((lons, lats))
+            tracks[name] = track
+        return tracks
+    
+    @staticmethod
+    def extract_profile(
+        grd_file: str,
+        track: np.ndarray,
+        newcolname: str = "z"
+    ) -> pd.DataFrame:
+        """
+        提取剖面并计算累计距离。
+        Extract profile from a GRD along a given track and compute cumulative distance.
+
+        参数 (Parameters)
+        ----------
+        grd_file : str
+            输入 GRD 文件路径。
+            Path to the source GRD file.
+        track : np.ndarray
+            剖线轨迹，二维数组，每行 [lon, lat]。
+            2D array of points [[lon, lat], ...] defining the profile line.
+        newcolname : str, optional
+            提取值列名，默认 "z"。
+            Name of the extracted value column (default "z").
+
+        返回 (Returns)
+        -------
+        pd.DataFrame
+            包含以下列的 DataFrame：
+            - "lon", "lat"：轨迹点经纬度 / longitude and latitude  
+            - newcolname：从 GRD 中提取的值 / extracted values  
+            - "distance"：从起点累计的距离（米） / cumulative distance in meters  
+        """
+        # 1. 用 pygmt.grdtrack 提取剖面数据 / Extract profile data with pygmt.grdtrack
+        profile: pd.DataFrame = pygmt.grdtrack(
+            points=track,
+            grid=grd_file,
+            newcolname=newcolname
+        )
+
+        # 2. 如果没有自动列名，则重命名为 lon, lat, newcolname
+        # Rename columns if they are unnamed
+        if not all(isinstance(col, str) for col in profile.columns):
+            profile.columns = ["lon", "lat", newcolname]
+
+        # 3. 计算沿轨迹累积距离（米）/ Compute cumulative distances (meters)
+        geod = Geod(ellps="WGS84")
+        distances = [0.0]
+        for i in range(1, len(profile)):
+            lon0, lat0 = profile.loc[i - 1, "lon"], profile.loc[i - 1, "lat"]
+            lon1, lat1 = profile.loc[i,     "lon"], profile.loc[i,     "lat"]
+            _, _, d = geod.inv(lon0, lat0, lon1, lat1)
+            distances.append(distances[-1] + d)
+        profile["distance"] = distances
+
+        return profile
 
     # ------------------------- 绘图步骤方法（无返回值） -------------------------
 
-    def draw_basemap(
+    def draw_geo_basemap(
         self,
         region: List[float],
         projection: str,
@@ -385,8 +488,52 @@ class PyGMTPlotter:
         )
 
         return self
+    
+    def draw_optic(
+        self,
+        optic_tif: str,
+        region: List[float],
+        projection: str,
+        transparency: int = 0,
+    ) -> "PyGMTPlotter":
+        """
+        绘制光学（影像）底图（直接使用 GeoTIFF / RGB 文件，无需转换为 GRD）。
+        Render an optical/raster basemap directly from a GeoTIFF/RGB file (no GRD conversion).
 
-    def draw_deformation(
+        参数 (Parameters)
+        ----------
+        optic_tif : str
+            光学影像文件路径（GeoTIFF 或其他 GDAL 可识别的影像，支持多波段 RGB）。
+            Path to the optical image (GeoTIFF or any GDAL-readable raster, including RGB).
+        region : List[float]
+            地图区域范围 [xmin, xmax, ymin, ymax]。
+        projection : str
+            投影字符串，例如 "M8i"。
+        transparency : int, optional
+            图层整体透明度（0=不透明，100=完全透明），默认 0。
+            Layer transparency (0..100).
+
+        返回 (Returns)
+        -------
+        self : PyGMTPlotter
+            支持链式调用。
+        """
+        try:
+            # 直接绘制影像；不指定 cmap，保留原始色彩；NaN/NoData 透明可见底图
+            self.fig.grdimage(
+                grid=optic_tif,
+                region=region,
+                projection=projection,
+                nan_transparent=True,
+                transparency=transparency,
+            )
+        except Exception as e:
+            raise RuntimeError(f"使用 pygmt 绘制光学影像时出错: {e}")
+
+        return self
+
+
+    def draw_defo_grd(
         self,
         data_grd: str,
         cpt: str,
@@ -437,8 +584,73 @@ class PyGMTPlotter:
         )
 
         return self
+    
+    def draw_defo_scatter(
+        self,
+        data_grd: str,
+        cpt: str,
+        region: List[float],
+        projection: str,
+        bar_min: float = -0.06,
+        bar_max: float = 0.06,
+        style: str = "c0.08c",
+        pen: str = "0.01p,white",
+        transparency: int = 0,
+    ) -> "PyGMTPlotter":
+        """
+        基于栅格直接绘制散点形变图（输入为 GRD/GeoTIFF 等 GMT 可读栅格）。
+        Render deformation as colored scatter points directly from a grid (GRD/GeoTIFF).
 
-    def add_colorbar_bottom(self) -> "PyGMTPlotter":
+        参数 (Parameters)
+        ----------
+        data_grd : str
+            单波段形变栅格（GRD/GeoTIFF/NetCDF 等 GMT 可读）。
+        cpt : str
+            外部 CPT 文件路径（用作颜色映射）。
+        region : List[float]
+            地图范围 [xmin, xmax, ymin, ymax]。
+        projection : str
+            投影字符串，例如 "M8i"。
+        bar_min, bar_max : float
+            颜色映射范围，与 draw_deformation 一致。
+        style : str
+            点样式（默认 "c0.08c"）。
+        pen : str
+            点边框画笔（默认 "0.25p,black"）。
+        transparency : int
+            图层透明度（0=不透明，100=完全透明）。
+
+        返回 (Returns)
+        -------
+        self : PyGMTPlotter
+            支持链式调用。
+        """
+        # 1) 栅格转散点 (x, y, z)，直接在内存中完成
+        df = pygmt.grd2xyz(grid=data_grd, region=region, output_type="pandas").dropna()
+
+        # 2) 颜色表（与 draw_deformation 保持一致）
+        pygmt.makecpt(
+            cmap=cpt,
+            series=[bar_min, bar_max],
+            background=True,
+            #reverse=True,
+        )
+
+        # 3) 绘制散点（以 z 作为颜色值）
+        self.fig.plot(
+            data=df,
+            region=region,
+            projection=projection,
+            style=style,
+            #pen=pen,
+            cmap=True,
+            transparency=transparency,
+        )
+
+        return self
+
+
+    def add_colorbar(self) -> "PyGMTPlotter":
         """
         添加颜色条（底部居中 + 下移；白底 + 边框 + 内边距）。
         Add colorbar at bottom center with outward offset, white background & padding.
@@ -458,13 +670,13 @@ class PyGMTPlotter:
             self.fig.colorbar(
                 cmap=True,
                 position="JBC+o0c/4c+w12c/0.6c+h",
-                frame=["xa0.04f0.04+lDeformation", "y+lm/yr"],
+                frame=["xa0.05f0.025+lDeformation", "y+lm/yr"],
                 box="F+gWHITE+p2p+c20p/20p",
             )
 
         return self
 
-    def add_scale_top(
+    def add_scale(
         self,
         region: List[float],
         projection: str,
@@ -494,7 +706,7 @@ class PyGMTPlotter:
         
         return self
 
-    def add_rose_right(
+    def add_rose(
         self,
         region: List[float],
         projection: str,
@@ -522,7 +734,7 @@ class PyGMTPlotter:
         )
 
         return self
-
+    
     def draw_profile_tracks(
         self,
         tracks: Dict[str, Sequence[Sequence[float]]],
@@ -614,7 +826,7 @@ class PyGMTPlotter:
         self.fig.plot(**kwargs)
         return self
     
-    def profile_new_axes(
+    def draw_math_basemap(
         self,
         profiles: 'pd.DataFrame | Sequence[pd.DataFrame]',
         title: str = "Profile_Curve",
@@ -662,7 +874,7 @@ class PyGMTPlotter:
         return self
 
 
-    def profile_add_line(
+    def draw_line_2d(
         self,
         profile: 'pd.DataFrame',
         label: str,
@@ -684,7 +896,7 @@ class PyGMTPlotter:
         return self
 
 
-    def profile_add_scatter(
+    def draw_scatter_2d(
         self,
         profile: 'pd.DataFrame',
         label: str,
@@ -718,7 +930,7 @@ class PyGMTPlotter:
         self.fig.plot(**kw)
         return self
     
-    def profile_legend(
+    def add_legend(
     self,
     position: str = "JTR+o0.5c/-1.2c",
     box: str = "+gwhite+p1.5p",
