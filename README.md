@@ -25,7 +25,7 @@ project_root/
 ├─ lib/                             # shared libraries (e.g., pygmt_plotter.py)          / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
 │  ├─ data_preprocess               # shared library for data preprocessing              / 数据预处理库
 │  └─ pygmt_plotter.py              # core library for PyGMT plotting                    / PyGMT 绘图核心库
-├─ cpt/                             # shared color palette files                         / 共享色标文件
+├─ cpt/                             # shared color palette files                         / 共享色标文件库
 ├─ plot_defo_dem_optic/             # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
 │  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
