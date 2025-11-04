@@ -468,6 +468,7 @@ class PyGMTPlotter:
         -------
         None
         """
+        # 地形数据预处理
         if not os.path.exists(demgradient_grd):
             if not os.path.exists(dem_grd):
                 gdal.Translate(dem_grd, dem_tif, format="GSBG")
@@ -494,7 +495,6 @@ class PyGMTPlotter:
         optic_tif: str,
         region: List[float],
         projection: str,
-        transparency: int = 0,
     ) -> "PyGMTPlotter":
         """
         绘制光学（影像）底图（直接使用 GeoTIFF / RGB 文件，无需转换为 GRD）。
@@ -518,15 +518,26 @@ class PyGMTPlotter:
         self : PyGMTPlotter
             支持链式调用。
         """
+
         try:
+            # 对光学影像进行 RGB 转换预处理 
+            rgb_tif = os.path.splitext(optic_tif)[0] + "_rgb.tif" 
+            gdal.Translate( 
+                rgb_tif, optic_tif,
+                format="GTiff",
+                bandList=[1, 2, 3],
+                creationOptions=["COMPRESS=LZW","INTERLEAVE=PIXEL","TILED=YES","PHOTOMETRIC=RGB"],
+            )
             # 直接绘制影像；不指定 cmap，保留原始色彩；NaN/NoData 透明可见底图
             self.fig.grdimage(
-                grid=optic_tif,
+                grid=rgb_tif,
                 region=region,
                 projection=projection,
-                nan_transparent=True,
-                transparency=transparency,
             )
+
+            # 删除中间变量文件
+            os.remove(rgb_tif)
+
         except Exception as e:
             raise RuntimeError(f"使用 pygmt 绘制光学影像时出错: {e}")
 
@@ -541,7 +552,7 @@ class PyGMTPlotter:
         projection: str,
         bar_min: float = -0.06,
         bar_max: float = 0.06,
-        alpha: int = 25,
+        transparency: int = 25,
     ) -> "PyGMTPlotter":
         """
         绘制形变量网格（外部 CPT + 指定数值范围 + NaN 透明 + 整层透明度）。
@@ -580,7 +591,7 @@ class PyGMTPlotter:
             projection=projection,
             cmap=True,
             nan_transparent=True,
-            transparency=alpha,
+            transparency=transparency,
         )
 
         return self
