@@ -29,7 +29,7 @@ project_root/
 ├─ plot_defo_dem_optic/             # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
 │  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
-│  └─ plot_defo_dem.py              # example task script                                / 示例脚本
+│  └─ plot_defo_dem_optic.py        # example task script                                / 示例脚本
 ├─ defo_dem_profile/                # deformation/DEM + profile extraction & plotting    / 形变/DEM + 剖面抽取与绘图任务（含 data/ 与 result/）
 │  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
 │  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
@@ -73,8 +73,8 @@ Example:
 示例：
 
 ```shell
-cd plot_defo_dem
-python plot_defo_dem.py
+cd plot_defo_dem_optic
+python plot_defo_dem_optic.py
 
 cd plot_defo_profile
 python plot_defo_profile.py
