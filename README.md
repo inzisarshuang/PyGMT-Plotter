@@ -23,7 +23,7 @@ A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting 
 ```
 project_root/
 ├─ lib/                             # shared libraries (e.g., pygmt_plotter.py)          / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
-│  ├─ data_preprocess.py            # shared library for data preprocessing              / 数据预处理库
+│  ├─ geodata_preprocess.py         # shared library for data preprocessing              / 数据预处理库
 │  └─ pygmt_plotter.py              # core library for PyGMT plotting                    / PyGMT 绘图核心库
 ├─ cpt/                             # shared color palette files                         / 共享色标文件库
 ├─ plot_defo_dem_optic/             # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
