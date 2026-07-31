@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .venv/
 env/
+.coverage
+.pytest_cache/
 
 # ---------- VSCode ----------
 #.vscode/
@@ -14,7 +16,8 @@ env/
 *.jpg
 *.bin
 *.xml
+result/
+results/
 
 # ---------- MacOS ----------
 .DS_Store
-

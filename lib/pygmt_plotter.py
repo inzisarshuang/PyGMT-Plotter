@@ -8,19 +8,22 @@ Affiliation: SIGM@3-D Laboratory, School of Geosciences and Information Physics,
 Created: 2025-09-11
 创建日期：2025-09-11
 
-Summary: This class is a thin wrapper around PyGMT; it draws a figure via chainable (fluent) calls and saves the output.
+Summary: This class wraps PyGMT with chainable drawing and export methods.
 摘要：该类为封装的一个 PyGMT 绘图器，通过链式调用完成一张图的绘制与保存。
 
 """
 
-from typing import List, Tuple, Dict, Sequence, Optional
+from contextlib import contextmanager
+from hashlib import sha256
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 import os
-import re
+import subprocess
+import tempfile
 import pygmt
 import rasterio
 import numpy as np
 import pandas as pd
-from osgeo import gdal
 from pyproj import Geod
 
 # 默认基础绘图参数
@@ -29,6 +32,50 @@ DEFAULTS = dict(
     FONT_ANNOT_PRIMARY="12p,Helvetica-Bold",
     FONT_LABEL="20p,Helvetica-Bold",
 )
+
+
+def gdal_translate(
+    src: str,
+    dst: str,
+    fmt: str = "GSBG",
+    bands: Optional[Sequence[int]] = None,
+    creation_options: Optional[Sequence[str]] = None,
+) -> None:
+    """Run gdal_translate through the GDAL CLI to avoid requiring osgeo bindings."""
+    cmd = ["gdal_translate", "-of", fmt]
+    for band in bands or []:
+        cmd.extend(["-b", str(band)])
+    for option in creation_options or []:
+        cmd.extend(["-co", option])
+    cmd.extend([src, dst])
+    subprocess.run(cmd, check=True)
+
+
+@contextmanager
+def temporary_path(directory: Path, suffix: str) -> Iterator[Path]:
+    """Yield a unique path and remove it when the operation finishes."""
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=".pygmt_plotter_", suffix=suffix, dir=directory)
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink(missing_ok=True)
+    try:
+        yield path
+    finally:
+        for related_path in (path, Path(f"{path}.aux.xml"), Path(f"{path}.ovr")):
+            related_path.unlink(missing_ok=True)
+
+
+def replace_dataset(source: Path, destination: Path) -> None:
+    """Replace a raster and move GDAL sidecar metadata when present."""
+    os.replace(source, destination)
+    for sidecar_suffix in (".aux.xml", ".ovr"):
+        source_sidecar = Path(f"{source}{sidecar_suffix}")
+        destination_sidecar = Path(f"{destination}{sidecar_suffix}")
+        if source_sidecar.exists():
+            os.replace(source_sidecar, destination_sidecar)
+        else:
+            destination_sidecar.unlink(missing_ok=True)
 
 
 class PyGMTPlotter:
@@ -51,10 +98,23 @@ class PyGMTPlotter:
         当前实例的可修改默认样式；new() 时会一次性应用到 GMT 会话。
     """
 
-    def __init__(self, defaults: dict | None = None):
+    def __init__(self, defaults: dict | None = None, cache_dir: str | None = None):
+        """Initialize figure state, GMT defaults, and the derived-grid cache directory."""
         self.fig = None
-        self._base_defaults = DEFAULTS.copy()
-        self.defaults = (defaults or self._base_defaults).copy()
+        self._base_defaults = (defaults or DEFAULTS).copy()
+        self.defaults = self._base_defaults.copy()
+        self.cache_dir = (
+            Path(cache_dir).expanduser().resolve()
+            if cache_dir
+            else Path(tempfile.gettempdir()) / "pygmt-plotter-cache"
+        )
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _require_figure(self) -> pygmt.Figure:
+        """Return the active figure or fail with an actionable message."""
+        if self.fig is None:
+            raise RuntimeError("请先调用 new() 创建绘图对象 / call new() before drawing")
+        return self.fig
 
     # ------------------------- 默认绘图参数更新方法 -------------------------
 
@@ -129,8 +189,14 @@ class PyGMTPlotter:
         self : PyGMTPlotter
             支持链式调用。
         """
-        assert self.fig is not None, "请先调用 new() 并完成绘制后再保存"
-        self.fig.savefig(output_file)
+        figure = self._require_figure()
+        output = Path(output_file).expanduser().resolve()
+        if not output.suffix:
+            raise ValueError(f"output file must include an extension: {output_file}")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with temporary_path(output.parent, output.suffix) as temporary_output:
+            figure.savefig(str(temporary_output))
+            os.replace(temporary_output, output)
         print(f"图像已保存：{output_file}")
         return self
 
@@ -159,17 +225,11 @@ class PyGMTPlotter:
         ValueError
             当无法从 grdinfo 输出中解析到坐标范围时抛出。
         """
-        info_text = pygmt.grdinfo(grid=grid_path)
-        x_match = re.search(r"x_min:\s*([\d\.-]+)\s+x_max:\s*([\d\.-]+)", info_text)
-        y_match = re.search(r"y_min:\s*([\d\.-]+)\s+y_max:\s*([\d\.-]+)", info_text)
-        if x_match and y_match:
-            return [
-                float(x_match.group(1)),
-                float(x_match.group(2)),
-                float(y_match.group(1)),
-                float(y_match.group(2)),
-            ]
-        raise ValueError("无法解析区域范围信息")
+        info_text = pygmt.grdinfo(grid=grid_path, per_column="n")
+        values = np.fromstring(info_text, sep=" ")
+        if values.size < 4:
+            raise ValueError(f"无法解析区域范围信息: {grid_path}")
+        return values[:4].astype(float).tolist()
 
     @staticmethod
     def tif2grd(
@@ -203,39 +263,38 @@ class PyGMTPlotter:
             栅格的空间范围 [xmin, xmax, ymin, ymax]。
             Spatial bounds of the raster in the form [xmin, xmax, ymin, ymax].
         """
-        # 1) 打开 TIF，读取范围与数据
-        with rasterio.open(tif_path) as src:
+        source = Path(tif_path).expanduser().resolve()
+        output = Path(grd_path).expanduser().resolve()
+        if not source.is_file():
+            raise FileNotFoundError(f"input GeoTIFF not found: {source}")
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        with rasterio.open(source) as src:
+            if src.count < 1:
+                raise ValueError(f"input GeoTIFF has no raster bands: {source}")
             bounds = src.bounds
             region = [bounds.left, bounds.right, bounds.bottom, bounds.top]
-            data = src.read(1).astype("float32")
-
-            # 2) 缩放
-            data_scaled = data * scale
-
-            # 3) 写临时 TIF（按需处理 NaN）
             profile = src.profile.copy()
-            profile.update(dtype=rasterio.float32)
+            profile.update(count=1, dtype=rasterio.float32)
             if nan_to_zero:
                 profile.update(nodata=0)
-                data_scaled = np.nan_to_num(data_scaled, nan=0.0)
             else:
-                profile.update(nodata=None)
+                profile.update(nodata=np.nan)
 
-        temp_tif = "temp_scaled.tif"
-        with rasterio.open(temp_tif, "w", **profile) as dst:
-            dst.write(data_scaled, 1)
-            print(f"临时 TIF 已保存: {temp_tif}")
+            with temporary_path(output.parent, ".tif") as temporary_tif:
+                with rasterio.open(temporary_tif, "w", **profile) as dst:
+                    for _, window in src.block_windows(1):
+                        data = src.read(1, window=window, masked=True).astype("float32")
+                        scaled = data.filled(np.nan) * np.float32(scale)
+                        if nan_to_zero:
+                            scaled = np.nan_to_num(scaled, nan=0.0)
+                        dst.write(scaled.astype("float32", copy=False), 1, window=window)
 
-        # 4) 转 GRD (GSBG)
-        gdal.Translate(grd_path, temp_tif, format="GSBG")
-        print(f"已转换为 GRD: {grd_path}")
+                with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
+                    gdal_translate(str(temporary_tif), str(temporary_grd), fmt="GSBG")
+                    replace_dataset(temporary_grd, output)
 
-        # 5) 清理临时文件
-        try:
-            os.remove(temp_tif)
-            print(f"已删除临时文件: {temp_tif}")
-        except OSError as e:
-            print(f"删除临时文件时出错: {e}")
+        print(f"已转换为 GRD: {output}")
 
         return region
 
@@ -245,6 +304,7 @@ class PyGMTPlotter:
         grd_path: str,
         scale: float = 1.0,
         space: float = 0.0005,
+        chunk_rows: int = 250_000,
     ) -> List[float]:
         """
         加载 TXT 文件，应用缩放因子，并转换为 GRD 格式。
@@ -264,6 +324,9 @@ class PyGMTPlotter:
         space : float, optional
             生成网格的空间分辨率（度）。
             Grid spacing in degrees (default 0.0005).
+        chunk_rows : int, optional
+            每次读取的文本行数，用于限制峰值内存（默认 250000）。
+            Number of text rows processed per chunk (default 250000).
 
         返回 (Returns)
         -------
@@ -271,29 +334,117 @@ class PyGMTPlotter:
             数据范围 [xmin, xmax, ymin, ymax]。
             Spatial bounds of the data as [xmin, xmax, ymin, ymax].
         """
-        # 1) 读入文本（假设空白分隔，且表头含 lon/lat）
-        df = pd.read_csv(txt_path, sep=r"\s+")
-        # 2) 第三列按比例缩放
-        df.iloc[:, 2] = df.iloc[:, 2] * scale
-        # 3) 计算范围
-        region = [df["lon"].min(), df["lon"].max(), df["lat"].min(), df["lat"].max()]
-        print(f"TXT 数据区域: {region}")
-        # 4) 散点转栅格
-        pygmt.xyz2grd(
-            data=df,
-            region=region,
-            spacing=space,
-            outgrid=grd_path,
-        )
-        print(f"TXT 转换为 GRD 完成: {grd_path}")
+        source = Path(txt_path).expanduser().resolve()
+        output = Path(grd_path).expanduser().resolve()
+        if not source.is_file():
+            raise FileNotFoundError(f"input text file not found: {source}")
+        if space <= 0:
+            raise ValueError(f"space must be positive; got {space}")
+        if chunk_rows <= 0:
+            raise ValueError(f"chunk_rows must be positive; got {chunk_rows}")
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        bounds = [np.inf, -np.inf, np.inf, -np.inf]
+        row_count = 0
+        with temporary_path(output.parent, ".xyz") as temporary_xyz:
+            for chunk in pd.read_csv(source, sep=r"\s+", chunksize=chunk_rows):
+                if len(chunk.columns) < 3 or "lon" not in chunk or "lat" not in chunk:
+                    raise ValueError(
+                        f"text input must contain lon/lat headers and at least three columns: {source}"
+                    )
+                value_column = chunk.columns[2]
+                selected = chunk.loc[:, ["lon", "lat", value_column]].copy()
+                selected["lon"] = pd.to_numeric(selected["lon"], errors="raise")
+                selected["lat"] = pd.to_numeric(selected["lat"], errors="raise")
+                selected[value_column] = pd.to_numeric(selected[value_column], errors="raise") * scale
+                selected = selected[np.isfinite(selected["lon"]) & np.isfinite(selected["lat"])]
+                if selected.empty:
+                    continue
+
+                bounds[0] = min(bounds[0], float(selected["lon"].min()))
+                bounds[1] = max(bounds[1], float(selected["lon"].max()))
+                bounds[2] = min(bounds[2], float(selected["lat"].min()))
+                bounds[3] = max(bounds[3], float(selected["lat"].max()))
+                selected.to_csv(
+                    temporary_xyz,
+                    sep="\t",
+                    columns=["lon", "lat", value_column],
+                    header=False,
+                    index=False,
+                    mode="a",
+                )
+                row_count += len(selected)
+
+            if row_count == 0:
+                raise ValueError(f"text input contains no valid coordinate rows: {source}")
+
+            data_region = [float(value) for value in bounds]
+            x_steps = max(1, int(np.ceil((data_region[1] - data_region[0]) / space)))
+            y_steps = max(1, int(np.ceil((data_region[3] - data_region[2]) / space)))
+            region = [
+                data_region[0],
+                data_region[0] + x_steps * space,
+                data_region[2],
+                data_region[2] + y_steps * space,
+            ]
+            print(f"TXT 数据区域: {data_region}; 对齐后的网格区域: {region}")
+            with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
+                pygmt.xyz2grd(
+                    data=str(temporary_xyz),
+                    region=region,
+                    spacing=space,
+                    outgrid=str(temporary_grd),
+                )
+                replace_dataset(temporary_grd, output)
+
+        print(f"TXT 转换为 GRD 完成: {output}")
         return region
+
+    @staticmethod
+    def prepare_grid(
+        input_type: str,
+        input_path: str,
+        grd_path: str,
+        scale: float = 1.0,
+        space: float = 0.0005,
+        nan_to_zero: bool = True,
+        chunk_rows: int = 250_000,
+    ) -> List[float]:
+        """Convert a supported raster or point table into a GMT grid."""
+        normalized_type = input_type.strip().lower()
+        if normalized_type == "tif":
+            return PyGMTPlotter.tif2grd(input_path, grd_path, scale, nan_to_zero)
+        if normalized_type == "txt":
+            return PyGMTPlotter.txt2grd(input_path, grd_path, scale, space, chunk_rows)
+        raise ValueError(f"unsupported input_type: {input_type}; choose from tif, txt")
+
+    @staticmethod
+    def prepare_dataset_grid(dataset: Dict[str, object]) -> List[float]:
+        """Prepare a grid from the common dataset configuration schema.
+
+        根据两个绘图入口共用的数据集配置结构生成 GMT GRD，避免在任务脚本中
+        重复维护 TIF/TXT 分支。
+        """
+        required = ("input_type", "input_path", "grd_path", "scale", "space", "nan_to_zero")
+        missing = [key for key in required if key not in dataset]
+        if missing:
+            raise ValueError(f"dataset configuration is missing: {', '.join(missing)}")
+        return PyGMTPlotter.prepare_grid(
+            input_type=str(dataset["input_type"]),
+            input_path=str(dataset["input_path"]),
+            grd_path=str(dataset["grd_path"]),
+            scale=float(dataset["scale"]),
+            space=float(dataset["space"]),
+            nan_to_zero=bool(dataset["nan_to_zero"]),
+            chunk_rows=int(dataset.get("chunk_rows", 250_000)),
+        )
     
     @staticmethod
     def generate_tracks(
         start_coords: List[Tuple[float, float]],
         end_coords: List[Tuple[float, float]],
         num_points: int = 100,
-        pointnames: List[str] = None
+        pointnames: Optional[List[str]] = None,
     ) -> Dict[str, np.ndarray]:
         """
         生成剖线采样轨迹。
@@ -320,9 +471,25 @@ class PyGMTPlotter:
             字典：键为剖线名称，值为形状 (num_points, 2) 的 [lon, lat] 数组。
             Dict mapping each name to an (num_points, 2) array of [lon, lat] points.
         """
-        # 1. 如果未提供名称，则自动生成 A, B, C… / Auto‐generate names if not provided
+        if len(start_coords) != len(end_coords):
+            raise ValueError(
+                "start_coords and end_coords must have the same length; "
+                f"got {len(start_coords)} and {len(end_coords)}"
+            )
+        if not start_coords:
+            raise ValueError("at least one profile track is required")
+        if num_points < 2:
+            raise ValueError(f"num_points must be at least 2; got {num_points}")
+
         if pointnames is None:
             pointnames = [chr(ord("A") + i) for i in range(len(start_coords))]
+        if len(pointnames) != len(start_coords):
+            raise ValueError(
+                "pointnames must match the number of profile tracks; "
+                f"got {len(pointnames)} names and {len(start_coords)} tracks"
+            )
+        if len(set(pointnames)) != len(pointnames):
+            raise ValueError("pointnames must be unique")
 
         tracks: Dict[str, np.ndarray] = {}
         # 2. 对每条剖线，生成等间距经纬度并合并 / For each track, generate spaced lons/lats and stack
@@ -366,27 +533,30 @@ class PyGMTPlotter:
             - newcolname：从 GRD 中提取的值 / extracted values  
             - "distance"：从起点累计的距离（米） / cumulative distance in meters  
         """
-        # 1. 用 pygmt.grdtrack 提取剖面数据 / Extract profile data with pygmt.grdtrack
+        track_array = np.asarray(track, dtype=float)
+        if track_array.ndim != 2 or track_array.shape[1] != 2 or len(track_array) < 2:
+            raise ValueError("track must have shape (n, 2) with at least two lon/lat points")
+
         profile: pd.DataFrame = pygmt.grdtrack(
-            points=track,
+            points=track_array,
             grid=grd_file,
             newcolname=newcolname
         )
 
-        # 2. 如果没有自动列名，则重命名为 lon, lat, newcolname
-        # Rename columns if they are unnamed
-        if not all(isinstance(col, str) for col in profile.columns):
-            profile.columns = ["lon", "lat", newcolname]
+        if profile.shape[1] < 3:
+            raise ValueError(f"grdtrack returned fewer than three columns for {grd_file}")
+        profile = profile.iloc[:, :3].copy()
+        profile.columns = ["lon", "lat", newcolname]
 
-        # 3. 计算沿轨迹累积距离（米）/ Compute cumulative distances (meters)
+        if len(profile) == 0:
+            profile["distance"] = pd.Series(dtype=float)
+            return profile
+
         geod = Geod(ellps="WGS84")
-        distances = [0.0]
-        for i in range(1, len(profile)):
-            lon0, lat0 = profile.loc[i - 1, "lon"], profile.loc[i - 1, "lat"]
-            lon1, lat1 = profile.loc[i,     "lon"], profile.loc[i,     "lat"]
-            _, _, d = geod.inv(lon0, lat0, lon1, lat1)
-            distances.append(distances[-1] + d)
-        profile["distance"] = distances
+        lons = profile["lon"].to_numpy(dtype=float)
+        lats = profile["lat"].to_numpy(dtype=float)
+        _, _, segment_distances = geod.inv(lons[:-1], lats[:-1], lons[1:], lats[1:])
+        profile["distance"] = np.concatenate(([0.0], np.cumsum(segment_distances)))
 
         return profile
 
@@ -416,6 +586,7 @@ class PyGMTPlotter:
         None
         """
         factor = 3
+        figure = self._require_figure()
         x_stride = round((region[1] - region[0]) / factor, 4)
         y_stride = round((region[3] - region[2]) / factor, 4)
         x_anno = f"a{x_stride}fg"
@@ -428,7 +599,7 @@ class PyGMTPlotter:
             MAP_TICK_PEN="3p",
             FORMAT_GEO_MAP="ddd:mm:ss",
         ):
-            self.fig.basemap(
+            figure.basemap(
                 region=region,
                 projection=projection,
                 frame=[f"x{x_anno}", f"y{y_anno}", f"+t{title}"],
@@ -444,8 +615,8 @@ class PyGMTPlotter:
         cpt: str = "gray",
         bar_min: float = 700,
         bar_max: float = 2500,
-        dem_grd: str = "DEM.grd",
-        demgradient_grd: str = "DEMgradiant.grd",
+        dem_grd: Optional[str] = None,
+        demgradient_grd: Optional[str] = None,
     ) -> "PyGMTPlotter":
         """
         绘制 DEM 灰度底图并叠加阴影（hillshade）。
@@ -468,11 +639,34 @@ class PyGMTPlotter:
         -------
         None
         """
-        # 地形数据预处理
-        if not os.path.exists(demgradient_grd):
-            if not os.path.exists(dem_grd):
-                gdal.Translate(dem_grd, dem_tif, format="GSBG")
-            pygmt.grdgradient(grid=dem_grd, outgrid=demgradient_grd, azimuth=0)
+        figure = self._require_figure()
+        source = Path(dem_tif).expanduser().resolve()
+        if not source.is_file():
+            raise FileNotFoundError(f"DEM GeoTIFF not found: {source}")
+
+        signature = f"{source}:{source.stat().st_size}:{source.stat().st_mtime_ns}"
+        cache_key = sha256(signature.encode("utf-8")).hexdigest()[:16]
+        dem_grid = (
+            Path(dem_grd).expanduser().resolve()
+            if dem_grd
+            else self.cache_dir / f"{cache_key}_dem.grd"
+        )
+        gradient_grid = (
+            Path(demgradient_grd).expanduser().resolve()
+            if demgradient_grd
+            else self.cache_dir / f"{cache_key}_dem_gradient.grd"
+        )
+        dem_grid.parent.mkdir(parents=True, exist_ok=True)
+        gradient_grid.parent.mkdir(parents=True, exist_ok=True)
+
+        if not dem_grid.exists():
+            with temporary_path(dem_grid.parent, dem_grid.suffix or ".grd") as temporary_grd:
+                gdal_translate(str(source), str(temporary_grd), fmt="GSBG")
+                replace_dataset(temporary_grd, dem_grid)
+        if not gradient_grid.exists():
+            with temporary_path(gradient_grid.parent, gradient_grid.suffix or ".grd") as temporary_gradient:
+                pygmt.grdgradient(grid=str(dem_grid), outgrid=str(temporary_gradient), azimuth=0)
+                replace_dataset(temporary_gradient, gradient_grid)
 
         pygmt.makecpt(
             cmap=cpt,
@@ -480,12 +674,12 @@ class PyGMTPlotter:
             background=True,
             reverse=True,
         )
-        self.fig.grdimage(
-            grid=dem_grd,
+        figure.grdimage(
+            grid=str(dem_grid),
             region=region,
             projection=projection,
             cmap=True,
-            shading=demgradient_grd,
+            shading=str(gradient_grid),
         )
 
         return self
@@ -519,27 +713,33 @@ class PyGMTPlotter:
             支持链式调用。
         """
 
-        try:
-            # 对光学影像进行 RGB 转换预处理 
-            rgb_tif = os.path.splitext(optic_tif)[0] + "_rgb.tif" 
-            gdal.Translate( 
-                rgb_tif, optic_tif,
-                format="GTiff",
-                bandList=[1, 2, 3],
-                creationOptions=["COMPRESS=LZW","INTERLEAVE=PIXEL","TILED=YES","PHOTOMETRIC=RGB"],
-            )
-            # 直接绘制影像；不指定 cmap，保留原始色彩；NaN/NoData 透明可见底图
-            self.fig.grdimage(
-                grid=rgb_tif,
-                region=region,
-                projection=projection,
-            )
+        figure = self._require_figure()
+        source = Path(optic_tif).expanduser().resolve()
+        if not source.is_file():
+            raise FileNotFoundError(f"optical GeoTIFF not found: {source}")
 
-            # 删除中间变量文件
-            os.remove(rgb_tif)
+        try:
+            with temporary_path(self.cache_dir, ".tif") as rgb_tif:
+                gdal_translate(
+                    str(source),
+                    str(rgb_tif),
+                    fmt="GTiff",
+                    bands=[1, 2, 3],
+                    creation_options=[
+                        "COMPRESS=LZW",
+                        "INTERLEAVE=PIXEL",
+                        "TILED=YES",
+                        "PHOTOMETRIC=RGB",
+                    ],
+                )
+                figure.grdimage(
+                    grid=str(rgb_tif),
+                    region=region,
+                    projection=projection,
+                )
 
         except Exception as e:
-            raise RuntimeError(f"使用 pygmt 绘制光学影像时出错: {e}")
+            raise RuntimeError(f"使用 pygmt 绘制光学影像时出错: {e}") from e
 
         return self
 
@@ -553,6 +753,7 @@ class PyGMTPlotter:
         bar_min: float = -0.06,
         bar_max: float = 0.06,
         transparency: int = 25,
+        cpt_reverse: bool = False,
     ) -> "PyGMTPlotter":
         """
         绘制形变量网格（外部 CPT + 指定数值范围 + NaN 透明 + 整层透明度）。
@@ -579,13 +780,14 @@ class PyGMTPlotter:
         -------
         None
         """
+        figure = self._require_figure()
         pygmt.makecpt(
             cmap=cpt,
             series=[bar_min, bar_max],
             background=True,
-            reverse=True,
+            reverse=cpt_reverse,
         )
-        self.fig.grdimage(
+        figure.grdimage(
             grid=data_grd,
             region=region,
             projection=projection,
@@ -607,6 +809,7 @@ class PyGMTPlotter:
         style: str = "c0.08c",
         pen: str = "0.01p,white",
         transparency: int = 0,
+        cpt_reverse: bool = False,
     ) -> "PyGMTPlotter":
         """
         基于栅格直接绘制散点形变图（输入为 GRD/GeoTIFF 等 GMT 可读栅格）。
@@ -636,32 +839,38 @@ class PyGMTPlotter:
         self : PyGMTPlotter
             支持链式调用。
         """
-        # 1) 栅格转散点 (x, y, z)，直接在内存中完成
-        df = pygmt.grd2xyz(grid=data_grd, region=region, output_type="pandas").dropna()
+        figure = self._require_figure()
 
         # 2) 颜色表（与 draw_deformation 保持一致）
         pygmt.makecpt(
             cmap=cpt,
             series=[bar_min, bar_max],
             background=True,
-            #reverse=True,
+            reverse=cpt_reverse,
         )
 
-        # 3) 绘制散点（以 z 作为颜色值）
-        self.fig.plot(
-            data=df,
-            region=region,
-            projection=projection,
-            style=style,
-            #pen=pen,
-            cmap=True,
-            transparency=transparency,
-        )
+        with temporary_path(self.cache_dir, ".xyz") as xyz_file:
+            pygmt.grd2xyz(
+                grid=data_grd,
+                region=region,
+                output_type="file",
+                outfile=str(xyz_file),
+                skiprows="2",
+            )
+            figure.plot(
+                data=str(xyz_file),
+                region=region,
+                projection=projection,
+                style=style,
+                pen=pen,
+                cmap=True,
+                transparency=transparency,
+            )
 
         return self
 
 
-    def add_colorbar(self) -> "PyGMTPlotter":
+    def add_colorbar(self, label: str = "Deformation", unit: str = "m/yr") -> "PyGMTPlotter":
         """
         添加颜色条（底部居中 + 下移；白底 + 边框 + 内边距）。
         Add colorbar at bottom center with outward offset, white background & padding.
@@ -674,14 +883,15 @@ class PyGMTPlotter:
         -------
         None
         """
+        figure = self._require_figure()
         with pygmt.config(
             FONT_ANNOT_PRIMARY="20p",
             FONT_ANNOT_SECONDARY="24p, Helvetica-Bold",
         ):
-            self.fig.colorbar(
+            figure.colorbar(
                 cmap=True,
                 position="JBC+o0c/4c+w12c/0.6c+h",
-                frame=["xa0.05f0.025+lDeformation", "y+lm/yr"],
+                frame=[f"xa+l{label}", f"y+l{unit}"],
                 box="F+gWHITE+p2p+c20p/20p",
             )
 
@@ -691,6 +901,11 @@ class PyGMTPlotter:
         self,
         region: List[float],
         projection: str,
+        map_scale: str = "JTC+o0c/4c+w10k+f+u",
+        box: str = "F+gWHITE+p2p+c20p/20p",
+        scale_height: str = "20p",
+        font_annot: str = "20p",
+        font_label: str = "20p,Helvetica-Bold,black",
     ) -> "PyGMTPlotter":
         """
         添加比例尺（上方居中 + 上移；白底 + 边框 + 内边距）。
@@ -707,12 +922,17 @@ class PyGMTPlotter:
         -------
         None
         """
-        with pygmt.config(MAP_SCALE_HEIGHT="20p", FONT_ANNOT_PRIMARY="20p"):
-            self.fig.basemap(
+        figure = self._require_figure()
+        with pygmt.config(
+            MAP_SCALE_HEIGHT=scale_height,
+            FONT_ANNOT_PRIMARY=font_annot,
+            FONT_LABEL=font_label,
+        ):
+            figure.basemap(
                 region=region,
                 projection=projection,
-                map_scale="JTC+o0c/4c+w10k+f+u",
-                box="F+gWHITE+p2p+c20p/20p",
+                map_scale=map_scale,
+                box=box,
             )
         
         return self
@@ -737,7 +957,8 @@ class PyGMTPlotter:
         -------
         None
         """
-        self.fig.basemap(
+        figure = self._require_figure()
+        figure.basemap(
             region=region,
             projection=projection,
             rose="JMR+jCM+o10c/0c+w5c+l+f1",
@@ -784,18 +1005,19 @@ class PyGMTPlotter:
         """
         if end_label_font is None:
             end_label_font = start_label_font
+        figure = self._require_figure()
 
         for name, track in tracks.items():
             arr = np.asarray(track, dtype=float)
             # 轨迹线
-            self.fig.plot(x=arr[:, 0], y=arr[:, 1], pen=line_pen)
+            figure.plot(x=arr[:, 0], y=arr[:, 1], pen=line_pen)
             # 起点注记
-            self.fig.text(
+            figure.text(
                 x=[arr[0, 0]], y=[arr[0, 1]],
                 text=name, font=start_label_font, justify=start_justify
             )
             # 终点注记
-            self.fig.text(
+            figure.text(
                 x=[arr[-1, 0]], y=[arr[-1, 1]],
                 text=name + end_suffix, font=end_label_font, justify=end_justify
             )
@@ -831,10 +1053,11 @@ class PyGMTPlotter:
         self : PyGMTPlotter
             支持链式调用。
         """
+        figure = self._require_figure()
         kwargs = dict(x=[float(lon)], y=[float(lat)], style=style, pen=pen)
         if fill is not None:
             kwargs["fill"] = fill
-        self.fig.plot(**kwargs)
+        figure.plot(**kwargs)
         return self
     
     def draw_math_basemap(
@@ -844,6 +1067,7 @@ class PyGMTPlotter:
         x_label: str = "Distance (m)",
         y_label: str = "Deformation (m)",
         padding: float = 0.1,
+        projection: str = "X16c/10c",
     )-> "PyGMTPlotter":
         """
         初始化剖面坐标轴：根据单个或多个剖面数据自动计算绘图范围，并绘制坐标框架。
@@ -860,15 +1084,23 @@ class PyGMTPlotter:
         返回:
         self（支持链式调用）
         """
-        if isinstance(profiles, (list, tuple)):
-            profiles = profiles
-        else:
-            profiles = [profiles]
+        profile_list = list(profiles) if isinstance(profiles, (list, tuple)) else [profiles]
+        if not profile_list:
+            raise ValueError("at least one profile is required")
+        for profile in profile_list:
+            missing = {"distance", "z"} - set(profile.columns)
+            if missing:
+                raise ValueError(f"profile is missing required columns: {', '.join(sorted(missing))}")
 
-        x_min = min(p["distance"].min() for p in profiles)
-        x_max = max(p["distance"].max() for p in profiles)
-        y_min = min(p["z"].min() for p in profiles)
-        y_max = max(p["z"].max() for p in profiles)
+        x_values = np.concatenate([profile["distance"].to_numpy(dtype=float) for profile in profile_list])
+        y_values = np.concatenate([profile["z"].to_numpy(dtype=float) for profile in profile_list])
+        x_values = x_values[np.isfinite(x_values)]
+        y_values = y_values[np.isfinite(y_values)]
+        if x_values.size == 0 or y_values.size == 0:
+            raise ValueError("profiles contain no finite distance/deformation values")
+
+        x_min, x_max = float(x_values.min()), float(x_values.max())
+        y_min, y_max = float(y_values.min()), float(y_values.max())
 
         if x_max == x_min:
             x_min -= 1.0; x_max += 1.0
@@ -878,8 +1110,10 @@ class PyGMTPlotter:
         y_gap = (y_max - y_min) * float(padding)
         y_min -= y_gap; y_max += y_gap
 
-        self.fig.basemap(
+        figure = self._require_figure()
+        figure.basemap(
             region=[x_min, x_max, y_min, y_max],
+            projection=projection,
             frame=[f"xaf+l{x_label}", f"yaf+l{y_label}", f"+t{title}"]
         )
         return self
@@ -903,7 +1137,8 @@ class PyGMTPlotter:
         返回:
         self（支持链式调用）
         """
-        self.fig.plot(x=profile["distance"], y=profile["z"], pen=pen, label=label)
+        figure = self._require_figure()
+        figure.plot(x=profile["distance"], y=profile["z"], pen=pen, label=label)
         return self
 
 
@@ -938,7 +1173,7 @@ class PyGMTPlotter:
                 style=style, pen=pen, transparency=transparency, label=label)
         if fill is not None:
             kw["fill"] = fill
-        self.fig.plot(**kw)
+        self._require_figure().plot(**kw)
         return self
     
     def add_legend(
@@ -956,6 +1191,5 @@ class PyGMTPlotter:
         返回:
         self（支持链式调用）
         """
-        self.fig.legend(position=position, box=box)
+        self._require_figure().legend(position=position, box=box)
         return self
-

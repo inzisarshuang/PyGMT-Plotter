@@ -1,103 +1,116 @@
 # PyGMT-Plotter
 
-A lightweight plotting toolkit built on PyGMT. It provides a chainable plotting class for general geographic plotting. Task-specific scripts are organized in separate folders and shared library live in `lib/`.   
-基于 PyGMT 的轻量级绘图工具箱，提供一个可链式调用的绘图类，用于通用地理绘图，任务脚本按功能分文件夹组织，共享库置于 `lib/`。
+PyGMT-Plotter is a configuration-driven toolkit for deformation maps, DEM or optical basemaps, and deformation profiles. It combines reusable, chainable PyGMT primitives with strict cfg files and bounded-memory geospatial preprocessing.
 
----
+PyGMT-Plotter 是一个由配置文件驱动的科研绘图库，用于绘制形变、DEM 或光学底图以及形变剖面。仓库将可复用的 PyGMT 链式绘图功能、严格的 cfg 接口和低内存地理数据预处理组合在一起。
 
-## Features 功能
+## Workflows / 工作流
 
-- Chainable plotting class (compose basemap, grdimage, colorbar, scale, markers, profiles, etc.).  
-链式绘图类，选择 pygmt.Figure 作为类对象，通过链式调用逐个叠加绘制好的图形要素。
+- `plot_defo_dem_optic`: convert TIF/TXT deformation data to GRD and draw it over a DEM or optical basemap.<br>将 TIF/TXT 形变数据转换为 GRD，并叠加在 DEM 或光学底图上。
+- `plot_defo_profile`: compare two deformation datasets on maps and along named profile tracks.<br>在地图和指定剖线上比较两套形变数据。
+- `lib/pygmt_plotter.py`: shared grid conversion, profile extraction, and plotting primitives.<br>公共网格转换、剖面提取和绘图原语。
+- `lib/plot_config.py`: strict key-value cfg parsing, path resolution, and validation.<br>严格的键值配置解析、路径解析和参数校验。
+- `lib/geodata_preprocess.py`: windowed raster arithmetic.<br>按窗口执行的栅格运算。
 
-- Static helper tools for data preprocessing and raster conversion (TIF/TXT → GRD).  
-用于数据预处理与转换的静态辅助工具（如转换 TIF/TXT 格式到 GRD 格式）。
+## Repository Layout / 仓库结构
 
-- Project organized by task folders to ease maintenance and reuse.  
-项目按任务文件夹组织，便于维护与复用。
-
----
-
-## Repository overview 仓库总览
-
-```
-project_root/
-├─ lib/                             # shared libraries (e.g., pygmt_plotter.py)          / 共享库（如 pygmt_plotter.py），包含可复用的类与函数
-│  ├─ geodata_preprocess.py         # shared library for data preprocessing              / 数据预处理库
-│  └─ pygmt_plotter.py              # core library for PyGMT plotting                    / PyGMT 绘图核心库
-├─ cpt/                             # shared color palette files                         / 共享色标文件库
-├─ plot_defo_dem_optic/             # deformation + DEM plotting tasks                   / 形变叠加 DEM 绘图任务（含 data/ 与 result/）
-│  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
-│  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
-│  └─ plot_defo_dem_optic.py        # example task script                                / 示例脚本
-├─ defo_dem_profile/                # deformation/DEM + profile extraction & plotting    / 形变/DEM + 剖面抽取与绘图任务（含 data/ 与 result/）
-│  ├─ data/                         # input data (large files; gitignored)               / 输入数据（大文件，建议加入 .gitignore）
-│  ├─ result/                       # output results (large files; gitignored)           / 输出结果（大文件，建议加入 .gitignore）
-│  └─ plot_defo_profile.py          # example task script                                / 示例脚本
-├─ .vscode/                         # optional editor configs for local development      / 可选的本地开发编辑器配置
-├─ requirements.txt                 # environment dependencies specification             / 环境依赖说明文件
-├─ .gitignore                       # ignore rules for large data, results, secrets      / Git 忽略规则：大文件、结果与敏感信息
-└─ README.md                        # project overview, setup, and usage guide           / 项目总览、环境配置与使用指南
+```text
+PyGMT-Plotter/
+├── AGENTS.md                         # coding baseline / 代码基线
+├── CONTRIBUTING.md                   # contribution workflow / 开发流程
+├── cpt/                              # shared color palettes / 公共色带
+├── docs/development/                 # engineering rules / 工程规则
+├── lib/
+│   ├── geodata_preprocess.py
+│   ├── plot_config.py
+│   └── pygmt_plotter.py
+├── plot_defo_dem_optic/
+│   ├── data/                         # tracked example data / 已跟踪示例数据
+│   ├── plot_defo_dem_optic.cfg
+│   └── plot_defo_dem_optic.py
+├── plot_defo_profile/
+│   ├── data/                         # tracked example data / 已跟踪示例数据
+│   ├── plot_defo_dem_profile.cfg
+│   └── plot_defo_dem_profile.py
+├── tests/
+└── requirements.txt
 ```
 
-> Note: `data/` and `result/` often contain large files; include them in `.gitignore`.  
-> 说明：`data/` 与 `result/` 通常包含大文件，建议在 `.gitignore` 中忽略。
+The current example datasets are tracked so both workflows can be reproduced after cloning. Generated GRD files and figures are ignored.
 
----
+当前示例数据已经纳入版本控制，克隆仓库后即可复现。新生成的 GRD 和图片不会提交到仓库。
 
-## Install 安装
+## Installation / 安装
 
-Use a virtual environment (conda or pip).  
-使用虚拟环境管理依赖（conda 或 pip）。
+GMT and `gdal_translate` are native command-line dependencies; they are not Python packages in `requirements.txt`. Conda is the recommended installation route:
 
-Example (conda):  
-示例（conda）：
+GMT 和 `gdal_translate` 属于原生命令行依赖，不应通过 `requirements.txt` 安装。推荐使用 Conda：
 
 ```bash
-# 1、新建并激活环境
-conda create -n envPlot python=3.10 -y 
-conda activate envPlot 
+conda create -n envPlot -c conda-forge \
+  python=3.10 pygmt=0.10 gmt gdal rasterio pyproj numpy pandas -y
+conda activate envPlot
 
-# 2、原生库 + Python 包
-conda install -c conda-forge pygmt gmt gdal rasterio pyproj numpy pandas -y 
+gmt --version
+gdal_translate --version
 ```
 
----
+The code targets Python 3.10 or newer. PyGMT `0.10.0` is the verified server version; later compatible versions can also be tested.
 
-## Usage 使用
+代码面向 Python 3.10 或更高版本。服务器已验证 PyGMT `0.10.0`，也可测试后续兼容版本。
 
-Import the shared library and use the chainable API in your scripts.  
-在脚本中导入共享库并使用链式 API 组合绘图。
+## Usage / 使用方法
 
-Example:  
-示例：
+Paths inside a cfg file are resolved relative to that cfg file, not the shell's current directory. This makes project-specific cfg files portable.
 
-```shell
-cd plot_defo_dem_optic
-python plot_defo_dem_optic.py
+cfg 中的相对路径始终以 cfg 文件所在目录为基准，与终端当前目录无关，便于迁移项目配置。
 
-cd plot_defo_profile
-python plot_defo_profile.py
+```bash
+conda run -n envPlot python plot_defo_dem_optic/plot_defo_dem_optic.py \
+  --config plot_defo_dem_optic/plot_defo_dem_optic.cfg
+
+conda run -n envPlot python plot_defo_profile/plot_defo_dem_profile.py \
+  --config plot_defo_profile/plot_defo_dem_profile.cfg
 ```
 
-Detailed examples are provided in each task folder.  
-详细示例请参考各任务文件夹内的演示脚本。
+Each example cfg documents every supported option, its unit, and valid choices. Unknown or duplicate keys fail early instead of being silently ignored. Hex colors such as `#1f77b4` are supported directly.
 
----
+每个示例 cfg 都列出了支持的参数、单位和可选值。未知键或重复键会直接报错；可直接使用 `#1f77b4` 一类十六进制颜色。
 
-## Author 作者 
+## Data Behavior / 数据行为
 
-- Name: Yilun Tan  
-姓名：谭逸伦
+- TIF conversion reads raster blocks instead of loading the full scene.<br>TIF 转换按栅格块读取，不加载整景矩阵。
+- TXT point tables are scaled and written to GMT in chunks (`*_chunk_rows`).<br>TXT 点表按 `*_chunk_rows` 分块缩放并写入 GMT。
+- Grid scatter plots are passed to GMT through temporary XYZ files instead of a full Pandas DataFrame.<br>栅格散点通过临时 XYZ 文件交给 GMT，不构造完整 Pandas DataFrame。
+- Temporary products use unique names; final grids and figures replace their destination only after success.<br>临时产品使用唯一名称，最终网格和图片仅在成功后替换目标文件。
+- Display ranges such as `defo_bar_min` and `defo_bar_max` control color mapping only and do not modify source values.<br>`defo_bar_min`、`defo_bar_max` 等显示范围只控制颜色映射，不修改源数据。
 
-- Email: csuyiluntan@gmail.com, yiluntancsu@qq.com  
-邮箱：csuyiluntan@gmail.com，yiluntancsu@qq.com
+These constraints reduce peak memory on large regions and prevent interrupted jobs from leaving partial files that appear valid.
 
-- Affiliation: SIGM@3D Lab, School of Geosciences and Info-Physics, Central South University  
-单位：中南大学地球科学与信息物理学院 SIGM@3D 实验室
+这些约束用于降低大区域处理的峰值内存，并避免中断后留下看似完整、实际损坏的结果文件。
 
-- Created: 2025-09-15  
-创建时间：2025-09-15
+## Verification / 验证
 
-- Short summary: A thin wrapper PyGMT plotter enabling chain-style composition and export.  
-简短说明：该类为封装的 PyGMT 绘图器，通过链式调用完成图形的组合绘制与保存。
+```bash
+python -m py_compile lib/*.py plot_defo_dem_optic/*.py plot_defo_profile/*.py
+python -m unittest discover -s tests -v
+git diff --check
+```
+
+Changes to shared plotting or I/O code should also run both example workflows and visually inspect their outputs.
+
+修改公共绘图或数据读取逻辑后，还应完整运行两个示例并检查生成图片。
+
+## Development Rules / 开发规则
+
+Read [AGENTS.md](AGENTS.md) before adding code. Detailed ownership and scientific-data conventions are in [engineering_rules.md](docs/development/engineering_rules.md). Region-specific benchmark files are intentionally not part of this repository.
+
+新增代码前请先阅读 [AGENTS.md](AGENTS.md)。更详细的模块边界和科学数据约定见 [engineering_rules.md](docs/development/engineering_rules.md)。仓库不维护与特定区域绑定的 benchmark。
+
+## Author / 作者
+
+Yilun Tan (谭逸伦), SIGM@3D Laboratory, School of Geosciences and Info-Physics, Central South University.
+
+谭逸伦，中南大学地球科学与信息物理学院 SIGM@3D 实验室。
+
+Email: csuyiluntan@gmail.com, yiluntancsu@qq.com

@@ -1,211 +1,382 @@
+"""Draw two deformation datasets on maps and along common profile tracks."""
+
+import argparse
 import sys
 from pathlib import Path
 
-cpt_path = Path(__file__).resolve().parents[1] / "cpt" # 自定义库路径
-lib_path = Path(__file__).resolve().parents[1] / "lib" # 自定义库路径
-sys.path.append(str(lib_path)) # 添加自定义库路径到系统路径
+cpt_path = Path(__file__).resolve().parents[1] / "cpt"
+lib_path = Path(__file__).resolve().parents[1] / "lib"
+sys.path.append(str(lib_path))
 
-from pygmt_plotter import PyGMTPlotter # 从库中导入绘图类
-
-# ===================== 1) 数据预处理 =========================
-# 形变速率数据
-tif_s1_as_norcia = "data/S1_AS_Norcia.tif"
-txt_alos2_as = "data/ALOS2_AS.txt"
-# 转换后的 grd 数据文件
-grd_s1_as_norcia = "S1_AS_Norcia.grd"
-grd_alos2_as = "ALOS2_AS.grd"
-# 提取 grd 数据
-region_s1_as_norcia = PyGMTPlotter.tif2grd(tif_path=tif_s1_as_norcia, grd_path=grd_s1_as_norcia, scale=1)
-region_alos2_as  = PyGMTPlotter.txt2grd(txt_path=txt_alos2_as, grd_path=grd_alos2_as, scale=0.01, space=0.003)
-
-
-# 定义剖线轨迹
-start_coords = [   # 剖线起点和终点坐标
-    (12.97, 42.91),
-    (12.97, 42.85),
-    (12.97, 42.799),
-    (12.97, 42.75)
-]
-end_coords = [
-    (13.35, 42.93),
-    (13.35, 42.87),
-    (13.35, 42.819),
-    (13.35, 42.77)
-]
-# 每条剖线需要生成的采样点数量
-num_points = 100  
-# 剖线名称列表
-pointnames = ["A", "B", "C", "D"]
-# 生成剖线轨迹
-tracks = PyGMTPlotter.generate_tracks(start_coords=start_coords, end_coords=end_coords, num_points=num_points, pointnames=pointnames)
-# 从 grd 提取生成的剖线数据
-grd_files = [ grd_s1_as_norcia, grd_alos2_as ]
-profiles_AA = []
-profiles_BB = []
-profiles_CC = []
-profiles_DD = []
-for grd_file in grd_files:
-    profile_AA = PyGMTPlotter.extract_profile(grd_file, tracks["A"])
-    profile_BB = PyGMTPlotter.extract_profile(grd_file, tracks["B"])
-    profile_CC = PyGMTPlotter.extract_profile(grd_file, tracks["C"])
-    profile_DD = PyGMTPlotter.extract_profile(grd_file, tracks["D"])   
-    profiles_AA.append(profile_AA)
-    profiles_BB.append(profile_BB)
-    profiles_CC.append(profile_CC)
-    profiles_DD.append(profile_DD)
-
-# 打印生成的剖线轨迹
-print("剖面数据预览:")
-print(profiles_AA[0].head(10)) # 打印前十行
-
-
-# ===================== 2) 初始化绘图器 & 设置默认样式 =====================
-plotter = PyGMTPlotter()
-plotter.set_defaults(
-    FONT_TITLE="24p,Helvetica-Bold",
-    FONT_ANNOT_PRIMARY="12p,Helvetica-Bold",
-    FONT_LABEL="20p,Helvetica-Bold",
+from plot_config import (
+    get_optional,
+    get_required,
+    load_key_value_config,
+    parse_bool,
+    parse_choice,
+    parse_coord_pairs,
+    parse_csv_strings,
+    parse_float,
+    parse_int,
+    parse_style_block,
+    resolve_output_path,
+    resolve_path,
+    validate_closed_range,
+    validate_config_keys,
+    validate_numeric_range,
+    validate_same_length,
 )
-
-# ===================== 3) 局部绘图参数设置 =====================
-projection  = "M8i"
-# 地形数据
-tif_dem = "data/DEM.tif"
-# 色标文件
-cpt_seismic = cpt_path/"seismic.cpt"
-cpt_dem = "gray"
-# 图片输出路径
-(Path(__file__).resolve().parent / "result").mkdir(parents=True, exist_ok=True) # 创建结果目录
-output_s1_as_norcia = "result/S1_AS_Norcia.png"
-output_alos2_as = "result/ALOS2_AS.png"
-output_profileAA_line = "result/Profile_AA_line.png"
-output_profileAA_scatter = "result/Profile_AA_scatter.png"
-output_profileBB_line = "result/Profile_BB_line.png"
-output_profileBB_scatter = "result/Profile_BB_scatter.png"
-output_profileCC_line = "result/Profile_CC_line.png"
-output_profileCC_scatter = "result/Profile_CC_scatter.png"
-output_profileDD_line = "result/Profile_DD_line.png"
-output_profileDD_scatter = "result/Profile_DD_scatter.png"
+from pygmt_plotter import PyGMTPlotter
 
 
-# ===================== 4) 出图（DEM 底图 + 形变叠加 + 指北针 + 比例尺 + 色标） =====================
-(plotter
-    .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
-    .draw_geo_basemap(region=region_s1_as_norcia, projection=projection, title="Deformation: S1_AS_Norcia")
-    .draw_dem(
-        dem_tif=tif_dem, 
-        cpt=cpt_dem,
-        region=region_s1_as_norcia, 
-        projection=projection,
-        bar_min=700, bar_max=2300,   # 色带显示范围
-    )   
-    .draw_defo_grd(
-        data_grd=grd_s1_as_norcia,
-        cpt=cpt_seismic,
-        region=region_s1_as_norcia,
-        projection=projection,
-        bar_min=-0.1, bar_max=0.1,   # 色带显示范围
-        alpha=25                       # 图层透明度（0~100）
+ALLOWED_KEYS = {
+    "output_dir", "projection", "dem_tif", "dem_cpt", "dem_bar_min", "dem_bar_max",
+    "defo_cpt", "defo_cpt_reverse", "defo_bar_min", "defo_bar_max", "defo_transparency",
+    "defo_colorbar_label", "defo_colorbar_unit", "add_colorbar", "add_scale", "map_scale",
+    "map_scale_box", "map_scale_height", "map_scale_font_annot", "map_scale_font_label",
+    "add_rose", "track_start_coords", "track_end_coords", "track_names", "track_num_points",
+    "track_line_pen", "track_label_font", "track_start_justify", "track_end_justify",
+    "track_end_suffix", "marker_lon", "marker_lat", "marker_style", "marker_pen", "marker_fill",
+    "export_line_profiles", "export_scatter_profiles", "profile_title_prefix",
+    "profile_x_label", "profile_y_label", "profile_padding", "profile_projection",
+    "profile_legend_position", "profile_legend_box", "default_font_title",
+    "default_font_annot_primary", "default_font_label", "map_font_title",
+    "map_font_annot_primary", "map_font_label", "profile_font_title",
+    "profile_font_annot_primary", "profile_font_label",
+}
+for _prefix in ("dataset1", "dataset2"):
+    ALLOWED_KEYS.update(
+        {
+            f"{_prefix}_label", f"{_prefix}_title", f"{_prefix}_input_type",
+            f"{_prefix}_input_path", f"{_prefix}_grd", f"{_prefix}_scale",
+            f"{_prefix}_space", f"{_prefix}_nan_to_zero", f"{_prefix}_chunk_rows",
+            f"{_prefix}_output_map", f"{_prefix}_line_pen", f"{_prefix}_scatter_style",
+            f"{_prefix}_scatter_fill", f"{_prefix}_scatter_pen",
+            f"{_prefix}_scatter_transparency",
+        }
     )
-    .draw_profile_tracks(tracks=tracks)
-    .add_marker(lon=13.12, lat=42.84)
-    .add_colorbar()
-    .add_scale(region=region_s1_as_norcia, projection=projection)
-    .add_rose(region=region_s1_as_norcia, projection=projection)
-    .save(output_s1_as_norcia)
-)
 
-(plotter
-    .new()  # 新建 Figure，并一次性应用刚才 set_defaults 的默认样式
-    .draw_geo_basemap(region=region_alos2_as, projection=projection, title="Deformation: ALOS2_AS")
-    .draw_dem(
-        dem_tif=tif_dem, 
-        cpt=cpt_dem,
-        region=region_alos2_as, 
-        projection=projection,
-        bar_min=700, bar_max=2300,   # 色带显示范围
-    )   
-    .draw_defo_grd(
-        data_grd=grd_alos2_as,
-        cpt=cpt_seismic,
-        region=region_alos2_as,
-        projection=projection,
-        bar_min=-0.1, bar_max=0.1,   # 色带显示范围
-        alpha=25                       # 图层透明度（0~100）
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for selecting a profile configuration file."""
+    parser = argparse.ArgumentParser(
+        description="Plot deformation maps and profile figures from a key-value cfg file."
     )
-    .draw_profile_tracks(tracks=tracks)
-    .add_marker(lon=13.12, lat=42.84)
-    .add_colorbar()
-    .add_scale(region=region_alos2_as, projection=projection)
-    .add_rose(region=region_alos2_as, projection=projection)
-    .save(output_alos2_as)
-)
-
-# 绘制折线图
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_AA, title="Profile_AA")
-    .draw_line_2d(profile=profiles_AA[0], label="S1", pen="2p,red")
-    .draw_line_2d(profile=profiles_AA[1], label="ALOS2", pen="2p,blue")
-    .add_legend()
-    .save(output_profileAA_line)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_BB, title="Profile_BB")
-    .draw_line_2d(profile=profiles_BB[0], label="S1", pen="2p,red")
-    .draw_line_2d(profile=profiles_BB[1], label="ALOS2", pen="2p,blue")
-    .add_legend()
-    .save(output_profileBB_line)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_CC, title="Profile_CC")
-    .draw_line_2d(profile=profiles_CC[0], label="S1", pen="2p,red")
-    .draw_line_2d(profile=profiles_CC[1], label="ALOS2", pen="2p,blue")
-    .add_legend()
-    .save(output_profileCC_line)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_DD, title="Profile_DD")
-    .draw_line_2d(profile=profiles_DD[0], label="S1", pen="2p,red")
-    .draw_line_2d(profile=profiles_DD[1], label="ALOS2", pen="2p,blue")
-    .add_legend()
-    .save(output_profileDD_line)
-)
+    parser.add_argument(
+        "--config",
+        default=str(Path(__file__).with_suffix(".cfg")),
+        help="Path to key=value cfg file. Defaults to plot_defo_dem_profile.cfg beside this script.",
+    )
+    return parser
 
 
-# 绘制散点图
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_AA, title="Profile_AA")
-    .draw_scatter_2d(profile=profiles_AA[0], label="S1", pen="0.5p,red", fill="red")
-    .draw_scatter_2d(profile=profiles_AA[1], label="ALOS2", pen="0.5p,blue", fill="blue")
-    .add_legend()
-    .save(output_profileAA_scatter)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_BB, title="Profile_BB")
-    .draw_scatter_2d(profile=profiles_BB[0], label="S1", pen="0.5p,red", fill="red")
-    .draw_scatter_2d(profile=profiles_BB[1], label="ALOS2", pen="0.5p,blue", fill="blue")
-    .add_legend()
-    .save(output_profileBB_scatter)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_CC, title="Profile_CC")
-    .draw_scatter_2d(profile=profiles_CC[0], label="S1", pen="0.5p,red", fill="red")
-    .draw_scatter_2d(profile=profiles_CC[1], label="ALOS2", pen="0.5p,blue", fill="blue")
-    .add_legend()
-    .save(output_profileCC_scatter)
-)
-(plotter
-    .new()
-    .draw_math_basemap(profiles=profiles_DD, title="Profile_DD")
-    .draw_scatter_2d(profile=profiles_DD[0], label="S1", pen="0.5p,red", fill="red")
-    .draw_scatter_2d(profile=profiles_DD[1], label="ALOS2", pen="0.5p,blue", fill="blue")
-    .add_legend()
-    .save(output_profileDD_scatter)
-)
+def load_dataset_cfg(
+    cfg: dict,
+    base_dir: Path,
+    output_dir: str,
+    prefix: str,
+    default_title: str,
+    default_output_stub: str,
+) -> dict:
+    """Normalize one prefixed dataset block, including map and profile styles."""
+    grd_default = f"{default_output_stub}.grd"
+    return {
+        "label": get_optional(cfg, f"{prefix}_label", default_output_stub),
+        "title": get_optional(cfg, f"{prefix}_title", default_title),
+        "input_type": parse_choice(
+            get_optional(cfg, f"{prefix}_input_type", "tif"), ("tif", "txt"), f"{prefix}_input_type"
+        ),
+        "input_path": resolve_path(get_required(cfg, f"{prefix}_input_path"), base_dir),
+        "grd_path": resolve_path(get_optional(cfg, f"{prefix}_grd", grd_default), base_dir),
+        "scale": parse_float(get_optional(cfg, f"{prefix}_scale", ""), 1.0),
+        "space": parse_float(get_optional(cfg, f"{prefix}_space", ""), 0.003),
+        "nan_to_zero": parse_bool(get_optional(cfg, f"{prefix}_nan_to_zero", ""), True),
+        "chunk_rows": parse_int(get_optional(cfg, f"{prefix}_chunk_rows", ""), 250_000),
+        "output_map": resolve_output_path(
+            get_optional(cfg, f"{prefix}_output_map", f"{default_output_stub}.png"),
+            output_dir,
+            base_dir,
+        ),
+        "line_pen": get_optional(cfg, f"{prefix}_line_pen", "2p,blue"),
+        "scatter_style": get_optional(cfg, f"{prefix}_scatter_style", "c0.4c"),
+        "scatter_fill": get_optional(cfg, f"{prefix}_scatter_fill", "blue"),
+        "scatter_pen": get_optional(cfg, f"{prefix}_scatter_pen", "0.5p,blue"),
+        "scatter_transparency": int(
+            parse_float(get_optional(cfg, f"{prefix}_scatter_transparency", ""), 60.0)
+        ),
+    }
+
+
+def load_config(config_path: str) -> dict:
+    """Load and validate map, dataset, track, profile, and style settings from cfg."""
+    cfg_path = Path(config_path).expanduser().resolve()
+    cfg = load_key_value_config(str(cfg_path))
+    validate_config_keys(cfg, ALLOWED_KEYS, str(cfg_path))
+    base_dir = cfg_path.parent
+
+    output_dir = resolve_path(get_optional(cfg, "output_dir", "result"), base_dir)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    first_dataset = load_dataset_cfg(
+        cfg, base_dir, output_dir, "dataset1", "Deformation: Dataset1", "dataset1"
+    )
+    second_dataset = load_dataset_cfg(
+        cfg, base_dir, output_dir, "dataset2", "Deformation: Dataset2", "dataset2"
+    )
+
+    start_coords = parse_coord_pairs(get_required(cfg, "track_start_coords"))
+    end_coords = parse_coord_pairs(get_required(cfg, "track_end_coords"))
+    pointnames = parse_csv_strings(get_required(cfg, "track_names"))
+    validate_same_length(
+        (start_coords, end_coords, pointnames),
+        ("track_start_coords", "track_end_coords", "track_names"),
+    )
+
+    marker_lon = get_optional(cfg, "marker_lon", "")
+    marker_lat = get_optional(cfg, "marker_lat", "")
+    if bool(marker_lon) != bool(marker_lat):
+        raise ValueError("marker_lon and marker_lat must be provided together.")
+
+    conf = {
+        "projection": get_optional(cfg, "projection", "M8i"),
+        "dem_tif": resolve_path(get_required(cfg, "dem_tif"), base_dir),
+        "dem_cpt": get_optional(cfg, "dem_cpt", "gray"),
+        "defo_cpt": resolve_path(get_optional(cfg, "defo_cpt", str(cpt_path / "seismic.cpt")), base_dir),
+        "defo_cpt_reverse": parse_bool(get_optional(cfg, "defo_cpt_reverse", ""), False),
+        "dem_bar_min": parse_float(get_optional(cfg, "dem_bar_min", ""), 700.0),
+        "dem_bar_max": parse_float(get_optional(cfg, "dem_bar_max", ""), 2300.0),
+        "defo_bar_min": parse_float(get_optional(cfg, "defo_bar_min", ""), -0.1),
+        "defo_bar_max": parse_float(get_optional(cfg, "defo_bar_max", ""), 0.1),
+        "defo_transparency": int(parse_float(get_optional(cfg, "defo_transparency", ""), 25.0)),
+        "defo_colorbar_label": get_optional(cfg, "defo_colorbar_label", "Deformation"),
+        "defo_colorbar_unit": get_optional(cfg, "defo_colorbar_unit", "m/yr"),
+        "num_points": parse_int(get_optional(cfg, "track_num_points", ""), 100),
+        "track_start_coords": start_coords,
+        "track_end_coords": end_coords,
+        "track_names": pointnames,
+        "output_dir": output_dir,
+        "line_profiles": parse_bool(get_optional(cfg, "export_line_profiles", ""), True),
+        "scatter_profiles": parse_bool(get_optional(cfg, "export_scatter_profiles", ""), True),
+        "add_colorbar": parse_bool(get_optional(cfg, "add_colorbar", ""), True),
+        "add_scale": parse_bool(get_optional(cfg, "add_scale", ""), True),
+        "map_scale": get_optional(cfg, "map_scale", "JTC+o0c/4c+w10k+f+u"),
+        "map_scale_box": get_optional(cfg, "map_scale_box", "F+gWHITE+p2p+c20p/20p"),
+        "map_scale_height": get_optional(cfg, "map_scale_height", "20p"),
+        "map_scale_font_annot": get_optional(cfg, "map_scale_font_annot", "20p"),
+        "map_scale_font_label": get_optional(cfg, "map_scale_font_label", "20p,Helvetica-Bold,black"),
+        "add_rose": parse_bool(get_optional(cfg, "add_rose", ""), True),
+        "default_style": parse_style_block(
+            cfg,
+            "default",
+            "24p,Helvetica-Bold",
+            "12p,Helvetica-Bold",
+            "20p,Helvetica-Bold",
+        ),
+        "map_style": parse_style_block(
+            cfg,
+            "map",
+            "28p,Helvetica-Bold",
+            "14p,Helvetica-Bold",
+            "28p,Helvetica-Bold",
+        ),
+        "profile_style": parse_style_block(
+            cfg,
+            "profile",
+            "20p,Helvetica-Bold",
+            "12p,Helvetica",
+            "16p,Helvetica",
+        ),
+        "profile_title_prefix": get_optional(cfg, "profile_title_prefix", "Profile"),
+        "profile_x_label": get_optional(cfg, "profile_x_label", "Distance (m)"),
+        "profile_y_label": get_optional(cfg, "profile_y_label", "Deformation (m)"),
+        "profile_padding": parse_float(get_optional(cfg, "profile_padding", ""), 0.1),
+        "profile_projection": get_optional(cfg, "profile_projection", "X16c/10c"),
+        "profile_legend_position": get_optional(cfg, "profile_legend_position", "JTR+o0.5c/-1.2c"),
+        "profile_legend_box": get_optional(cfg, "profile_legend_box", "+gwhite+p1.5p"),
+        "track_line_pen": get_optional(cfg, "track_line_pen", "2p,black"),
+        "track_label_font": get_optional(cfg, "track_label_font", "20p,Helvetica-Bold"),
+        "track_start_justify": get_optional(cfg, "track_start_justify", "BR"),
+        "track_end_justify": get_optional(cfg, "track_end_justify", "BL"),
+        "track_end_suffix": get_optional(cfg, "track_end_suffix", "'"),
+        "dataset1": first_dataset,
+        "dataset2": second_dataset,
+        "marker_lon": float(marker_lon) if marker_lon else None,
+        "marker_lat": float(marker_lat) if marker_lat else None,
+        "marker_style": get_optional(cfg, "marker_style", "a16p"),
+        "marker_pen": get_optional(cfg, "marker_pen", "2p,black"),
+        "marker_fill": get_optional(cfg, "marker_fill", ""),
+    }
+    validate_numeric_range(conf["defo_bar_min"], conf["defo_bar_max"], "defo_bar_min", "defo_bar_max")
+    validate_numeric_range(conf["dem_bar_min"], conf["dem_bar_max"], "dem_bar_min", "dem_bar_max")
+    validate_closed_range(conf["defo_transparency"], "defo_transparency", 0, 100)
+    if conf["num_points"] < 2:
+        raise ValueError("track_num_points must be at least 2")
+    if conf["profile_padding"] < 0:
+        raise ValueError("profile_padding cannot be negative")
+    for prefix, dataset in (("dataset1", first_dataset), ("dataset2", second_dataset)):
+        if dataset["space"] <= 0:
+            raise ValueError(f"{prefix}_space must be positive")
+        if dataset["chunk_rows"] <= 0:
+            raise ValueError(f"{prefix}_chunk_rows must be positive")
+        validate_closed_range(
+            dataset["scatter_transparency"], f"{prefix}_scatter_transparency", 0, 100
+        )
+    return conf
+
+
+def build_tracks(cfg: dict) -> dict:
+    """Generate named lon/lat sampling tracks from normalized cfg coordinates."""
+    return PyGMTPlotter.generate_tracks(
+        start_coords=cfg["track_start_coords"],
+        end_coords=cfg["track_end_coords"],
+        num_points=cfg["num_points"],
+        pointnames=cfg["track_names"],
+    )
+
+
+def extract_profiles(dataset_cfgs: list[dict], tracks: dict) -> dict:
+    """Sample every dataset along every named track and group results by track."""
+    profiles: dict = {name: [] for name in tracks}
+    for dataset_cfg in dataset_cfgs:
+        for track_name in tracks:
+            profiles[track_name].append(
+                PyGMTPlotter.extract_profile(dataset_cfg["grd_path"], tracks[track_name])
+            )
+    return profiles
+
+
+def render_map(plotter: PyGMTPlotter, cfg: dict, dataset_cfg: dict, tracks: dict) -> None:
+    """Compose and save one deformation map with DEM, tracks, and optional marker."""
+    region = plotter.region_from_grd(dataset_cfg["grd_path"])
+    plotter.new()
+    plotter.draw_geo_basemap(region=region, projection=cfg["projection"], title=dataset_cfg["title"])
+    plotter.draw_dem(
+        dem_tif=cfg["dem_tif"],
+        cpt=cfg["dem_cpt"],
+        region=region,
+        projection=cfg["projection"],
+        bar_min=cfg["dem_bar_min"],
+        bar_max=cfg["dem_bar_max"],
+    )
+    plotter.draw_defo_grd(
+        data_grd=dataset_cfg["grd_path"],
+        cpt=cfg["defo_cpt"],
+        region=region,
+        projection=cfg["projection"],
+        bar_min=cfg["defo_bar_min"],
+        bar_max=cfg["defo_bar_max"],
+        transparency=cfg["defo_transparency"],
+        cpt_reverse=cfg["defo_cpt_reverse"],
+    )
+    plotter.draw_profile_tracks(
+        tracks=tracks,
+        line_pen=cfg["track_line_pen"],
+        start_label_font=cfg["track_label_font"],
+        start_justify=cfg["track_start_justify"],
+        end_justify=cfg["track_end_justify"],
+        end_suffix=cfg["track_end_suffix"],
+    )
+    if cfg["marker_lon"] is not None and cfg["marker_lat"] is not None:
+        plotter.add_marker(
+            lon=cfg["marker_lon"],
+            lat=cfg["marker_lat"],
+            style=cfg["marker_style"],
+            pen=cfg["marker_pen"],
+            fill=cfg["marker_fill"] or None,
+        )
+    if cfg["add_colorbar"]:
+        plotter.add_colorbar(label=cfg["defo_colorbar_label"], unit=cfg["defo_colorbar_unit"])
+    if cfg["add_scale"]:
+        plotter.add_scale(
+            region=region,
+            projection=cfg["projection"],
+            map_scale=cfg["map_scale"],
+            box=cfg["map_scale_box"],
+            scale_height=cfg["map_scale_height"],
+            font_annot=cfg["map_scale_font_annot"],
+            font_label=cfg["map_scale_font_label"],
+        )
+    if cfg["add_rose"]:
+        plotter.add_rose(region=region, projection=cfg["projection"])
+    plotter.save(dataset_cfg["output_map"])
+
+
+def profile_output_path(cfg: dict, track_name: str, mode: str) -> str:
+    """Build the output filename for one track and profile rendering mode."""
+    filename = f"{cfg['profile_title_prefix']}_{track_name}_{mode}.png"
+    return str(Path(cfg["output_dir"]) / filename)
+
+
+def render_profiles(plotter: PyGMTPlotter, cfg: dict, dataset_cfgs: list[dict], profiles: dict) -> None:
+    """Render configured line and scatter comparisons for every profile track."""
+    for track_name, track_profiles in profiles.items():
+        title = f"{cfg['profile_title_prefix']} {track_name}"
+        if cfg["line_profiles"]:
+            plotter.new()
+            plotter.draw_math_basemap(
+                profiles=track_profiles,
+                title=title,
+                x_label=cfg["profile_x_label"],
+                y_label=cfg["profile_y_label"],
+                padding=cfg["profile_padding"],
+                projection=cfg["profile_projection"],
+            )
+            for dataset_cfg, profile in zip(dataset_cfgs, track_profiles):
+                plotter.draw_line_2d(
+                    profile=profile,
+                    label=dataset_cfg["label"],
+                    pen=dataset_cfg["line_pen"],
+                )
+            plotter.add_legend(
+                position=cfg["profile_legend_position"], box=cfg["profile_legend_box"]
+            )
+            plotter.save(profile_output_path(cfg, track_name, "line"))
+
+        if cfg["scatter_profiles"]:
+            plotter.new()
+            plotter.draw_math_basemap(
+                profiles=track_profiles,
+                title=title,
+                x_label=cfg["profile_x_label"],
+                y_label=cfg["profile_y_label"],
+                padding=cfg["profile_padding"],
+                projection=cfg["profile_projection"],
+            )
+            for dataset_cfg, profile in zip(dataset_cfgs, track_profiles):
+                plotter.draw_scatter_2d(
+                    profile=profile,
+                    label=dataset_cfg["label"],
+                    style=dataset_cfg["scatter_style"],
+                    pen=dataset_cfg["scatter_pen"],
+                    fill=dataset_cfg["scatter_fill"],
+                    transparency=dataset_cfg["scatter_transparency"],
+                )
+            plotter.add_legend(
+                position=cfg["profile_legend_position"], box=cfg["profile_legend_box"]
+            )
+            plotter.save(profile_output_path(cfg, track_name, "scatter"))
+
+
+def main() -> None:
+    """Prepare both grids, extract common profiles, and render all configured figures."""
+    args = build_parser().parse_args()
+    cfg = load_config(args.config)
+
+    dataset_cfgs = [cfg["dataset1"], cfg["dataset2"]]
+    for dataset_cfg in dataset_cfgs:
+        PyGMTPlotter.prepare_dataset_grid(dataset_cfg)
+
+    tracks = build_tracks(cfg)
+    profiles = extract_profiles(dataset_cfgs, tracks)
+
+    map_plotter = PyGMTPlotter(defaults={**cfg["default_style"], **cfg["map_style"]})
+
+    for dataset_cfg in dataset_cfgs:
+        render_map(map_plotter, cfg, dataset_cfg, tracks)
+
+    profile_plotter = PyGMTPlotter(defaults={**cfg["default_style"], **cfg["profile_style"]})
+    render_profiles(profile_plotter, cfg, dataset_cfgs, profiles)
+
+
+if __name__ == "__main__":
+    main()

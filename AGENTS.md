@@ -1,0 +1,59 @@
+# PyGMT-Plotter Coding Baseline
+
+This file defines the rules an AI coding agent or human contributor should read before changing this repository.
+
+## Scope
+
+- Keep plotting workflows configuration-driven. Scientific paths, units, scales, color limits, transparency, and styles belong in cfg files, not hidden constants in entry scripts.
+- Reuse `lib/pygmt_plotter.py`, `lib/plot_config.py`, and `lib/geodata_preprocess.py` before adding helpers.
+- Add a shared function only when it removes real duplication or establishes one scientific behavior in one place.
+- Preserve existing cfg keys unless a migration path and compatibility alias are provided.
+
+## Scientific Data Rules
+
+- Never silently change units, sign conventions, nodata meaning, CRS, transform, or registration.
+- Validate raster dimensions, transform, and CRS before pixel-wise arithmetic.
+- Treat `0` and nodata as different values. Convert one to the other only through an explicit option.
+- Record scale factors and display ranges in cfg files. A visual color limit must not clip or alter source data.
+- Resolve relative paths from the cfg file directory so the same command works from any current directory.
+
+## Memory And Output Safety
+
+- Read large rasters by block/window and large tables by chunks. Avoid full-matrix copies when a streaming path exists.
+- Prefer passing files to GMT over materializing full grids as Pandas DataFrames.
+- Use unique temporary files and remove them in `finally` or a context manager.
+- Write outputs to a temporary sibling and atomically replace the destination after success.
+- Cache derived DEM grids only with a source signature that includes path, size, and modification time.
+
+## Python Style
+
+- Target Python 3.10 or newer and use type hints for public functions.
+- Use `pathlib.Path`, context managers, and `subprocess.run(..., check=True)`.
+- Raise actionable exceptions; do not use `assert` for runtime validation.
+- Start every production function and method, including private helpers and entry-script orchestration, with a concise docstring that states its purpose. Public scientific APIs may add bilingual parameter and return details when useful.
+- Entry scripts should parse configuration, orchestrate shared functions, and remain thin.
+
+## Configuration Files
+
+- Use `key = value`, one setting per line.
+- Reject malformed lines, duplicate keys, unknown keys, invalid choices, and inconsistent ranges early.
+- Keep hexadecimal colors such as `#1f77b4` valid. Inline comments require whitespace before `#`.
+- Document every supported key in the corresponding example cfg, including units and valid choices.
+
+## Documentation
+
+- Keep every README bilingual: place the English heading or passage first and its corresponding Chinese translation immediately after it.
+- Preserve the same order in tables and code comments so both language versions remain easy to navigate.
+
+## Verification
+
+Run before committing:
+
+```bash
+python -m py_compile lib/*.py plot_defo_dem_optic/*.py plot_defo_profile/*.py
+python -m unittest discover -s tests -v
+```
+
+Run both example plotting workflows when shared plotting or I/O behavior changes. Inspect the generated images, not only process exit codes.
+
+Do not add region-specific performance benchmarks. Datasets vary too much for a fixed benchmark to be meaningful here.

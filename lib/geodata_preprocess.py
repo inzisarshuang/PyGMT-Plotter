@@ -1,71 +1,92 @@
-    
-import rasterio
-import numpy as np  
+"""Windowed preprocessing helpers for geospatial raster data."""
 
+from __future__ import annotations
+
+import os
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import rasterio
+
+
+def _validate_matching_grids(src1: rasterio.io.DatasetReader, src2: rasterio.io.DatasetReader) -> None:
+    """Ensure two rasters share the same pixel grid before arithmetic."""
+    mismatches = []
+    if (src1.width, src1.height) != (src2.width, src2.height):
+        mismatches.append("dimensions")
+    if src1.transform != src2.transform:
+        mismatches.append("transform")
+    if src1.crs != src2.crs:
+        mismatches.append("CRS")
+    if mismatches:
+        raise ValueError(f"input rasters do not share the same grid: {', '.join(mismatches)}")
 
 
 def add_tifs(
     tif1_path: str,
     tif2_path: str,
     out_tif: str,
-    mask_any: bool = True
+    mask_any: bool = True,
 ) -> None:
-    """
-    将两幅 GeoTIFF 按像元相加，并根据 nodata 掩膜结果。
-    Add two GeoTIFF rasters pixel‐wise with nodata masking.
+    """Add two single-band GeoTIFFs using bounded-memory window reads.
 
-    参数 (Parameters)
+    将两幅共网格单波段 GeoTIFF 按像元相加，并使用分块读取限制内存占用。
+
+    Parameters
     ----------
-    tif1_path : str
-        第一幅输入 GeoTIFF 文件路径。
-        Path to the first input GeoTIFF.
-    tif2_path : str
-        第二幅输入 GeoTIFF 文件路径。
-        Path to the second input GeoTIFF.
+    tif1_path, tif2_path : str
+        Input GeoTIFF paths. Their dimensions, transform, and CRS must match.
+        输入文件路径；两者的尺寸、仿射变换和坐标系必须一致。
     out_tif : str
-        输出 GeoTIFF 文件路径。
-        Path where the output GeoTIFF will be saved.
-    mask_any : bool, optional
-        掩膜模式：
-        - True：任一像元为 nodata 时输出 nodata（mask = nan1 | nan2）。
-        - False：仅当两者均为 nodata 时才输出 nodata（mask = nan1 & nan2）。
-        Mask mode: True to mask if any input is nodata, False to mask only if all inputs are nodata.
-
-    返回 (Returns)
-    -------
-    None
+        Output GeoTIFF path. The file is replaced only after a complete write.
+        输出路径；仅在完整写入成功后替换目标文件。
+    mask_any : bool, default=True
+        If True, output nodata when either input is nodata. If False, treat one
+        missing operand as zero and output nodata only when both are nodata.
+        为 True 时任一输入为空即输出空值；为 False 时单侧空值按零处理，
+        仅两侧均为空时输出空值。
     """
-    print(f"Adding TIFFs:\n  1: {tif1_path}\n  2: {tif2_path}\nMask any nodata: {mask_any}")
+    source1 = Path(tif1_path).expanduser().resolve()
+    source2 = Path(tif2_path).expanduser().resolve()
+    output = Path(out_tif).expanduser().resolve()
+    for source in (source1, source2):
+        if not source.is_file():
+            raise FileNotFoundError(f"input GeoTIFF not found: {source}")
 
-    # 1. 打开两幅 TIF 并读取元数据与像元值 / Open both rasters and read metadata & arrays
-    with rasterio.open(tif1_path) as src1, rasterio.open(tif2_path) as src2:
-        meta = src1.meta.copy()             # 复制第一个文件的元数据 / copy metadata from first raster
-        nodata1 = src1.nodata               # 第一个文件的 nodata 值 / nodata value of raster1
-        nodata2 = src2.nodata               # 第二个文件的 nodata 值 / nodata value of raster2
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".add_tifs_", suffix=output.suffix or ".tif", dir=output.parent
+    )
+    os.close(descriptor)
+    temporary_output = Path(temporary_name)
+    temporary_output.unlink(missing_ok=True)
 
-        arr1 = src1.read(1).astype("float32")  # 读取第一波段并转换为 float32 / read band1 as float32
-        arr2 = src2.read(1).astype("float32")  # 读取第一波段并转换为 float32 / read band1 as float32
+    try:
+        with rasterio.open(source1) as src1, rasterio.open(source2) as src2:
+            if src1.count < 1 or src2.count < 1:
+                raise ValueError("both input rasters must contain at least one band")
+            _validate_matching_grids(src1, src2)
 
-    # 2. 将 nodata 值替换为 NaN，便于后续掩膜 / Convert nodata to NaN for masking
-    if nodata1 is not None:
-        arr1[arr1 == nodata1] = np.nan
-    if nodata2 is not None:
-        arr2[arr2 == nodata2] = np.nan
+            profile = src1.profile.copy()
+            profile.update(count=1, dtype="float32", nodata=np.nan)
+            with rasterio.open(temporary_output, "w", **profile) as dst:
+                for _, window in src1.block_windows(1):
+                    arr1 = src1.read(1, window=window, masked=True).filled(np.nan).astype("float32")
+                    arr2 = src2.read(1, window=window, masked=True).filled(np.nan).astype("float32")
+                    nan1 = np.isnan(arr1)
+                    nan2 = np.isnan(arr2)
 
-    # 3. 构造掩膜 / Build mask according to mask_any
-    nan1 = np.isnan(arr1)
-    nan2 = np.isnan(arr2)
-    if mask_any:
-        mask = nan1 | nan2  # 任一为 NaN 时掩膜 / mask if either is NaN
-    else:
-        mask = nan1 & nan2  # 仅全为 NaN 时掩膜 / mask if both are NaN
+                    if mask_any:
+                        result = arr1 + arr2
+                        result[nan1 | nan2] = np.nan
+                    else:
+                        result = np.nan_to_num(arr1, nan=0.0) + np.nan_to_num(arr2, nan=0.0)
+                        result[nan1 & nan2] = np.nan
+                    dst.write(result.astype("float32", copy=False), 1, window=window)
 
-    # 4. 执行像元相加，再应用掩膜 / Perform pixel‐wise addition and apply mask
-    result = arr1 + arr2
-    result[mask] = np.nan  # 将掩膜位置置为 NaN / set masked locations to NaN
+        os.replace(temporary_output, output)
+    finally:
+        temporary_output.unlink(missing_ok=True)
 
-    # 5. 更新元数据并写出结果 / Update metadata and write output
-    meta.update(dtype="float32", nodata=np.nan)
-    with rasterio.open(out_tif, "w", **meta) as dst:
-        dst.write(result, 1)
-    print(f"Output saved to: {out_tif}")
+    print(f"Output saved to: {output}")
