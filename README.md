@@ -1,18 +1,10 @@
 # PyGMT-Plotter
 
-PyGMT-Plotter is a configuration-driven toolkit for deformation maps, DEM or optical basemaps, and deformation profiles. It combines reusable, chainable PyGMT primitives with strict cfg files and bounded-memory geospatial preprocessing.
+PyGMT-Plotter is a configuration-driven toolkit for deformation maps, DEM or optical basemaps, and deformation profiles. It combines strict cfg interfaces, bounded-memory geospatial processing, and reusable PyGMT drawing primitives.
 
-PyGMT-Plotter 是一个由配置文件驱动的科研绘图库，用于绘制形变、DEM 或光学底图以及形变剖面。仓库将可复用的 PyGMT 链式绘图功能、严格的 cfg 接口和低内存地理数据预处理组合在一起。
+PyGMT-Plotter 是一个配置驱动的科研绘图库，用于绘制形变地图、DEM 或光学底图以及形变剖面。仓库整合了严格的 cfg 接口、低内存地理数据处理和可复用的 PyGMT 绘图功能。
 
-## Workflows / 工作流
-
-- `plot_defo_dem_optic`: convert TIF/TXT deformation data to GRD and draw it over a DEM or optical basemap.<br>将 TIF/TXT 形变数据转换为 GRD，并叠加在 DEM 或光学底图上。
-- `plot_defo_profile`: compare two deformation datasets on maps and along named profile tracks.<br>在地图和指定剖线上比较两套形变数据。
-- `lib/pygmt_io.py`: strict cfg parsing, path resolution, temporary files, atomic replacement, and GDAL command wrappers.<br>严格配置解析、路径处理、临时文件、原子替换和 GDAL 命令封装。
-- `lib/pygmt_geo.py`: bounded-memory raster arithmetic, grid conversion, track generation, and profile extraction.<br>低内存栅格运算、网格转换、轨迹生成和剖面提取。
-- `lib/pygmt_visual.py`: figure state and chainable PyGMT drawing primitives.<br>绘图状态管理和可链式调用的 PyGMT 绘图原语。
-
-## Repository Layout / 仓库结构
+## 1. Project Structure / 项目结构
 
 ```text
 PyGMT-Plotter/
@@ -21,75 +13,126 @@ PyGMT-Plotter/
 ├── cpt/                              # shared color palettes / 公共色带
 ├── docs/development/                 # engineering rules / 工程规则
 ├── lib/
-│   ├── pygmt_geo.py                  # spatial processing / 空间处理
 │   ├── pygmt_io.py                   # config and file I/O / 配置与文件读写
+│   ├── pygmt_geo.py                  # spatial processing / 空间处理
 │   └── pygmt_visual.py               # plotting / 绘图
-├── plot_defo_dem_optic/
-│   ├── data/                         # tracked example data / 已跟踪示例数据
-│   ├── plot_defo_dem_optic.cfg
-│   └── plot_defo_dem_optic.py
-├── plot_defo_profile/
-│   ├── data/                         # tracked example data / 已跟踪示例数据
-│   ├── plot_defo_dem_profile.cfg
-│   └── plot_defo_dem_profile.py
-├── tests/
-└── requirements.txt
+├── plot_defo_dem_optic/              # deformation map workflow / 形变地图流程
+├── plot_defo_profile/                # map and profile workflow / 地图与剖面流程
+├── tests/                            # regression tests / 回归测试
+└── requirements.txt                  # Python dependencies / Python 依赖
 ```
 
-The current example datasets are tracked so both workflows can be reproduced after cloning. Generated GRD files and figures are ignored.
+The tracked example datasets allow both workflows to run after cloning. Generated GRD files and figures are ignored by Git.
 
-当前示例数据已经纳入版本控制，克隆仓库后即可复现。新生成的 GRD 和图片不会提交到仓库。
+仓库已跟踪两套示例数据，克隆后即可运行两个流程；生成的 GRD 和图片由 Git 忽略。
 
-## Installation / 安装
+### 1.1 Documentation / 文档入口
 
-GMT and `gdal_translate` are native command-line dependencies; they are not Python packages in `requirements.txt`. Conda is the recommended installation route:
+- Project usage: this `README.md`.<br>项目使用说明：当前 `README.md`。
+- Development entry points: [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).<br>开发入口：上述两个文件。
+- Engineering baseline: [docs/development/README.md](docs/development/README.md).<br>工程规范入口：上述链接。
+- Scientific conventions: [docs/development/scientific_conventions.md](docs/development/scientific_conventions.md).<br>科学数据约定：上述链接。
+- Workflow parameters: [plot_defo_dem_optic.cfg](plot_defo_dem_optic/plot_defo_dem_optic.cfg) and [plot_defo_dem_profile.cfg](plot_defo_profile/plot_defo_dem_profile.cfg).<br>流程参数说明：上述两个示例 cfg。
 
-GMT 和 `gdal_translate` 属于原生命令行依赖，不应通过 `requirements.txt` 安装。推荐使用 Conda：
+## 2. Workflow Overview / 流程总览
+
+### 2.1 Deformation Map / 形变地图
+
+`plot_defo_dem_optic` converts TIF or TXT deformation data to GMT GRD and draws it over a DEM, optical image, or blank basemap.
+
+`plot_defo_dem_optic` 将 TIF 或 TXT 形变数据转换为 GMT GRD，并叠加到 DEM、光学影像或空白底图。
+
+1. Read and validate the cfg file, including paths, units, color limits, transparency, and styles.<br>读取并校验 cfg 中的路径、单位、色标范围、透明度和样式。
+2. Convert the enabled SBAS and PSI datasets to GMT GRD using windowed raster or chunked table reads.<br>通过栅格窗口或文本分块读取，将启用的 SBAS 和 PSI 数据转换为 GMT GRD。
+3. Draw the selected basemap, deformation grid or scatter points, target regions, colorbar, scale, and north arrow.<br>绘制选定底图、形变网格或散点、目标区域、色标、比例尺和指北针。
+4. Save each completed figure through a temporary sibling file and atomic replacement.<br>通过同目录临时文件和原子替换安全保存每张完整图片。
+
+### 2.2 Deformation Profiles / 形变剖面
+
+`plot_defo_profile` compares two deformation datasets on separate maps and along common named profile tracks.
+
+`plot_defo_profile` 在独立地图和公共命名剖线上对比两套形变数据。
+
+1. Normalize both dataset configurations and prepare their GMT grids.<br>归一化两套数据配置并准备 GMT 网格。
+2. Generate evenly spaced named tracks from configured start and end coordinates.<br>根据配置的起止坐标生成等间距命名轨迹。
+3. Sample both grids along every track and calculate cumulative WGS84 distance.<br>沿每条轨迹采样两套网格并计算 WGS84 累计距离。
+4. Export one map per dataset and optional line or scatter comparison figures per track.<br>为每套数据输出地图，并按剖线选择输出折线或散点对比图。
+
+### 2.3 Library Responsibilities / 函数库职责
+
+- `lib/pygmt_io.py`: strict cfg parsing, path resolution, parameter validation, temporary files, atomic replacement, and GDAL command wrappers.<br>负责严格 cfg 解析、路径处理、参数校验、临时文件、原子替换和 GDAL 命令封装。
+- `lib/pygmt_geo.py`: raster arithmetic, TIF/TXT conversion, grid regions, track generation, and profile extraction.<br>负责栅格运算、TIF/TXT 转换、网格范围、轨迹生成和剖面提取。
+- `lib/pygmt_visual.py`: figure state, map layers, profile plots, annotations, legends, and final figure output.<br>负责图形状态、地图图层、剖面图、注记、图例和最终图片输出。
+- `plot_*/*.py`: cfg normalization and workflow orchestration only.<br>入口脚本只负责 cfg 参数归一化和流程编排。
+
+## 3. Dependencies / 依赖环境
+
+### 3.1 Core Requirements / 核心依赖
+
+- Python 3.10 or newer; the recommended Conda environment name is `envPlot`.<br>Python 3.10 或更高版本，推荐 Conda 环境名为 `envPlot`。
+- GMT and PyGMT for map and grid operations.<br>GMT 与 PyGMT，用于地图和网格操作。
+- GDAL with `gdal_translate` available on `PATH`.<br>GDAL，并确保 `gdal_translate` 位于 `PATH`。
+- Rasterio, PyProj, NumPy, and Pandas for geospatial and tabular processing.<br>Rasterio、PyProj、NumPy 和 Pandas，用于地理空间及表格处理。
+
+### 3.2 Installation / 安装方法
 
 ```bash
+# Create and activate the plotting environment.
+# 创建并激活绘图环境。
 conda create -n envPlot -c conda-forge \
   python=3.10 pygmt=0.10 gmt gdal rasterio pyproj numpy pandas -y
 conda activate envPlot
+```
 
+PyGMT `0.10.0` is the verified server version. Later compatible versions may be used after running the repository tests and both example workflows.
+
+服务器已验证 PyGMT `0.10.0`；使用后续兼容版本时，应重新运行仓库测试和两个示例流程。
+
+### 3.3 Environment Check / 环境自检
+
+```bash
+python -c "import pygmt, rasterio, pyproj, numpy, pandas; print('envPlot OK')"
 gmt --version
 gdal_translate --version
 ```
 
-The code targets Python 3.10 or newer. PyGMT `0.10.0` is the verified server version; later compatible versions can also be tested.
+## 4. Quick Start / 快速开始
 
-代码面向 Python 3.10 或更高版本。服务器已验证 PyGMT `0.10.0`，也可测试后续兼容版本。
+Paths inside a cfg file are resolved relative to that cfg file rather than the shell's current directory. Bare output filenames are placed under the configured `output_dir`.
 
-## Usage / 使用方法
+cfg 中的相对路径以 cfg 文件目录为基准，而不是终端当前目录；仅包含文件名的输出会写入配置的 `output_dir`。
 
-Paths inside a cfg file are resolved relative to that cfg file, not the shell's current directory. This makes project-specific cfg files portable.
-
-cfg 中的相对路径始终以 cfg 文件所在目录为基准，与终端当前目录无关，便于迁移项目配置。
+### 4.1 Deformation Map / 形变地图
 
 ```bash
 conda run -n envPlot python plot_defo_dem_optic/plot_defo_dem_optic.py \
   --config plot_defo_dem_optic/plot_defo_dem_optic.cfg
+```
 
+### 4.2 Deformation Profiles / 形变剖面
+
+```bash
 conda run -n envPlot python plot_defo_profile/plot_defo_dem_profile.py \
   --config plot_defo_profile/plot_defo_dem_profile.cfg
 ```
 
-Each example cfg documents every supported option, its unit, and valid choices. Unknown or duplicate keys fail early instead of being silently ignored. Hex colors such as `#1f77b4` are supported directly.
+Each example cfg documents every supported key, unit, valid choice, and output option. Unknown, duplicate, malformed, or inconsistent settings fail before plotting. Hex colors such as `#1f77b4` are accepted directly.
 
-每个示例 cfg 都列出了支持的参数、单位和可选值。未知键或重复键会直接报错；可直接使用 `#1f77b4` 一类十六进制颜色。
+每个示例 cfg 均说明支持的配置键、单位、可选值和输出选项。未知、重复、格式错误或相互矛盾的参数会在绘图前报错；可直接使用 `#1f77b4` 等十六进制颜色。
 
-## Data Behavior / 数据行为
+## 5. Data And Output Behavior / 数据与输出行为
 
-- TIF conversion reads raster blocks instead of loading the full scene.<br>TIF 转换按栅格块读取，不加载整景矩阵。
-- TXT point tables are scaled and written to GMT in chunks (`*_chunk_rows`).<br>TXT 点表按 `*_chunk_rows` 分块缩放并写入 GMT。
-- Grid scatter plots are passed to GMT through temporary XYZ files instead of a full Pandas DataFrame.<br>栅格散点通过临时 XYZ 文件交给 GMT，不构造完整 Pandas DataFrame。
-- Temporary products use unique names; final grids and figures replace their destination only after success.<br>临时产品使用唯一名称，最终网格和图片仅在成功后替换目标文件。
-- Display ranges such as `defo_bar_min` and `defo_bar_max` control color mapping only and do not modify source values.<br>`defo_bar_min`、`defo_bar_max` 等显示范围只控制颜色映射，不修改源数据。
+- TIF conversion reads raster blocks instead of loading a complete scene into memory.<br>TIF 转换按栅格块读取，不将整景数据一次性载入内存。
+- TXT point tables are scaled and passed to GMT in configurable chunks through `*_chunk_rows`.<br>TXT 点表按 `*_chunk_rows` 配置分块缩放并交给 GMT。
+- Pixel-wise raster arithmetic requires matching dimensions, transforms, and coordinate reference systems.<br>逐像元栅格运算要求尺寸、仿射变换和坐标参考系一致。
+- Zero and nodata remain distinct; conversion occurs only through explicit cfg options such as `*_nan_to_zero`.<br>零值与 nodata 始终区分，仅通过 `*_nan_to_zero` 等显式配置执行转换。
+- Grid scatter plots use temporary XYZ files instead of materializing a full Pandas DataFrame.<br>网格散点通过临时 XYZ 文件交给 GMT，不构造完整 Pandas DataFrame。
+- Temporary products use unique names, and final grids or figures replace destinations only after success.<br>临时产品使用唯一名称，最终网格或图片仅在成功后替换目标文件。
+- Display limits such as `defo_bar_min` and `defo_bar_max` control color mapping without altering source values.<br>`defo_bar_min` 和 `defo_bar_max` 等显示范围只控制颜色映射，不修改源数据。
 
-These constraints reduce peak memory on large regions and prevent interrupted jobs from leaving partial files that appear valid.
+## 6. Verification And Development / 验证与开发
 
-这些约束用于降低大区域处理的峰值内存，并避免中断后留下看似完整、实际损坏的结果文件。
-
-## Verification / 验证
+### 6.1 Automated Checks / 自动检查
 
 ```bash
 python -m py_compile lib/*.py plot_defo_dem_optic/*.py plot_defo_profile/*.py
@@ -97,20 +140,30 @@ python -m unittest discover -s tests -v
 git diff --check
 ```
 
-Changes to shared plotting or I/O code should also run both example workflows and visually inspect their outputs.
+Changes to shared plotting, geospatial, or I/O behavior must also run both example workflows and inspect at least one generated map and profile figure.
 
-修改公共绘图或数据读取逻辑后，还应完整运行两个示例并检查生成图片。
+修改公共绘图、地理处理或 I/O 行为后，还必须运行两个示例流程，并检查至少一张地图和一张剖面图。
 
-## Development Rules / 开发规则
+### 6.2 Development Rules / 开发规则
 
-Read [AGENTS.md](AGENTS.md) before adding code. Detailed ownership and scientific-data conventions are in [engineering_rules.md](docs/development/engineering_rules.md). Region-specific benchmark files are intentionally not part of this repository.
+- Read [AGENTS.md](AGENTS.md) before adding or changing code.<br>新增或修改代码前阅读上述编码基线。
+- Follow [engineering_rules.md](docs/development/engineering_rules.md) for module ownership, memory, output, and cache behavior.<br>模块职责、内存、输出和缓存行为遵循上述工程规则。
+- Follow [python_rules.md](docs/development/python_rules.md) for module documentation and Python interfaces.<br>模块说明和 Python 接口遵循上述 Python 规则。
+- Do not add region-specific benchmark files; measure performance with representative task data when needed.<br>不新增与特定研究区绑定的 benchmark；需要时使用当前任务代表性数据测量性能。
 
-新增代码前请先阅读 [AGENTS.md](AGENTS.md)。更详细的模块边界和科学数据约定见 [engineering_rules.md](docs/development/engineering_rules.md)。仓库不维护与特定区域绑定的 benchmark。
+## 7. Author / 作者
 
-## Author / 作者
+- Yilun Tan · SIGM@3D Laboratory, School of Geosciences and Info-Physics, Central South University.<br>谭逸伦 · 中南大学地球科学与信息物理学院 SIGM@3D 实验室。
+- Email: `csuyiluntan@gmail.com`, `yiluntancsu@qq.com`.<br>邮箱：同上。
 
-Yilun Tan (谭逸伦), SIGM@3D Laboratory, School of Geosciences and Info-Physics, Central South University.
+## 8. Security / 安全说明
 
-谭逸伦，中南大学地球科学与信息物理学院 SIGM@3D 实验室。
+Do not commit credentials, private absolute paths, or confidential project data in cfg files, documentation, or examples. Rotate credentials and clean repository history immediately if a secret is exposed.
 
-Email: csuyiluntan@gmail.com, yiluntancsu@qq.com
+不得在 cfg、文档或示例中提交凭据、私有绝对路径或保密工程数据；若发生泄露，应立即更换凭据并清理仓库历史。
+
+## 9. License Notice / 许可说明
+
+No repository-wide license file is currently provided. Third-party dependencies and example datasets remain subject to their respective terms; obtain permission before redistributing repository code or data.
+
+当前仓库尚未提供统一许可证文件。第三方依赖和示例数据遵循各自条款；重新分发仓库代码或数据前应取得许可。

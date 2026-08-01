@@ -45,8 +45,13 @@ This file defines the rules an AI coding agent or human contributor should read 
 
 ## Documentation
 
-- Keep every README bilingual: place the English heading or passage first and its corresponding Chinese translation immediately after it.
-- Preserve the same order in tables and code comments so both language versions remain easy to navigate.
+- Keep every README bilingual: place each English heading or passage first and its corresponding Chinese translation immediately after it.
+- Use numbered bilingual sections in root and workflow READMEs, such as `## 1. Project Structure / 项目结构` and `### 1.1 Documentation / 文档入口`. Keep numbering continuous after structural edits.
+- Organize the root README in this order when applicable: project summary, project structure and documentation entry points, workflow overview, dependencies and installation, quick start, data/output behavior, verification and development, authors, security, and license notice.
+- Give each list item one clear subject. Put its English description first and the matching Chinese description after `<br>` in the same item; keep both languages semantically equivalent and in the same order.
+- Keep command examples executable from the stated directory. Use `<placeholder>` for user-supplied values and place English comments before their Chinese counterparts.
+- Use repository-relative links, verify every internal link, and never place credentials, private absolute paths, region-specific results, or generated products in a README.
+- Update the relevant README whenever workflows, public modules, cfg interfaces, dependencies, output behavior, or verification commands change.
 
 ## Verification
 
