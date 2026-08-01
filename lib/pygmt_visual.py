@@ -1,30 +1,56 @@
-# -*- coding: utf-8 -*-
 """
-Author: Yilun Tan csuyiluntan@gmail.com yiluntan@qq.com
-Affiliation: SIGM@3-D Laboratory, School of Geosciences and Information Physics, Central South University
-作者：谭逸伦 csuyiluntan@gmail.com yiluntan@qq.com
-单位：中南大学地球科学与信息物理学院 SIGM@-3D 实验室
+pygmt_visual
+============
 
-Created: 2025-09-11
-创建日期：2025-09-11
+功能概述:
+    集中提供 PyGMT 图形状态管理、地图底图、形变网格、剖面轨迹、
+    二维剖面、色标、比例尺、指北针和图例绘制功能。
 
-Summary: This class wraps PyGMT with chainable drawing and export methods.
-摘要：该类为封装的一个 PyGMT 绘图器，通过链式调用完成一张图的绘制与保存。
+函数说明:
+    ``PyGMTPlotter``:
+        封装可链式调用的 PyGMT 绘图流程，并管理图形状态和缓存目录。
+    图形状态:
+        ``PyGMTPlotter.new``:
+            创建新 Figure 并应用当前 GMT 默认样式。
+        ``PyGMTPlotter.set_defaults`` / ``PyGMTPlotter.reset_defaults``:
+            更新或恢复当前绘图器的默认样式。
+        ``PyGMTPlotter.save``:
+            通过同目录临时文件安全保存最终图像。
+    地图绘制:
+        ``PyGMTPlotter.draw_geo_basemap``:
+            绘制地理坐标边框、刻度和标题。
+        ``PyGMTPlotter.draw_dem`` / ``PyGMTPlotter.draw_optic``:
+            绘制 DEM 阴影或光学影像底图。
+        ``PyGMTPlotter.draw_defo_grd`` / ``PyGMTPlotter.draw_defo_scatter``:
+            以网格或散点方式绘制形变数据。
+        ``PyGMTPlotter.add_colorbar`` / ``PyGMTPlotter.add_scale``:
+            添加颜色条和地图比例尺。
+        ``PyGMTPlotter.add_rose`` / ``PyGMTPlotter.add_marker``:
+            添加指北针和单点标记。
+        ``PyGMTPlotter.draw_profile_tracks``:
+            绘制命名剖面轨迹及其起止点标签。
+    剖面绘制:
+        ``PyGMTPlotter.draw_math_basemap``:
+            根据一个或多个剖面自动建立二维坐标框架。
+        ``PyGMTPlotter.draw_line_2d`` / ``PyGMTPlotter.draw_scatter_2d``:
+            绘制折线或散点剖面数据。
+        ``PyGMTPlotter.add_legend``:
+            添加剖面图例。
 
+作者:
+    谭逸伦，SIGM@3D Laboratory，中南大学地球科学与信息物理学院。
 """
 
-from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence
 import os
-import subprocess
 import tempfile
 import pygmt
-import rasterio
 import numpy as np
 import pandas as pd
-from pyproj import Geod
+
+from pygmt_io import gdal_translate, replace_dataset, temporary_path
 
 # 默认基础绘图参数
 DEFAULTS = dict(
@@ -32,50 +58,6 @@ DEFAULTS = dict(
     FONT_ANNOT_PRIMARY="12p,Helvetica-Bold",
     FONT_LABEL="20p,Helvetica-Bold",
 )
-
-
-def gdal_translate(
-    src: str,
-    dst: str,
-    fmt: str = "GSBG",
-    bands: Optional[Sequence[int]] = None,
-    creation_options: Optional[Sequence[str]] = None,
-) -> None:
-    """Run gdal_translate through the GDAL CLI to avoid requiring osgeo bindings."""
-    cmd = ["gdal_translate", "-of", fmt]
-    for band in bands or []:
-        cmd.extend(["-b", str(band)])
-    for option in creation_options or []:
-        cmd.extend(["-co", option])
-    cmd.extend([src, dst])
-    subprocess.run(cmd, check=True)
-
-
-@contextmanager
-def temporary_path(directory: Path, suffix: str) -> Iterator[Path]:
-    """Yield a unique path and remove it when the operation finishes."""
-    directory.mkdir(parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(prefix=".pygmt_plotter_", suffix=suffix, dir=directory)
-    os.close(descriptor)
-    path = Path(name)
-    path.unlink(missing_ok=True)
-    try:
-        yield path
-    finally:
-        for related_path in (path, Path(f"{path}.aux.xml"), Path(f"{path}.ovr")):
-            related_path.unlink(missing_ok=True)
-
-
-def replace_dataset(source: Path, destination: Path) -> None:
-    """Replace a raster and move GDAL sidecar metadata when present."""
-    os.replace(source, destination)
-    for sidecar_suffix in (".aux.xml", ".ovr"):
-        source_sidecar = Path(f"{source}{sidecar_suffix}")
-        destination_sidecar = Path(f"{destination}{sidecar_suffix}")
-        if source_sidecar.exists():
-            os.replace(source_sidecar, destination_sidecar)
-        else:
-            destination_sidecar.unlink(missing_ok=True)
 
 
 class PyGMTPlotter:
@@ -199,366 +181,6 @@ class PyGMTPlotter:
             os.replace(temporary_output, output)
         print(f"图像已保存：{output_file}")
         return self
-
-    # ------------------------- 预处理与实用工具方法 -------------------------
-
-    @staticmethod
-    def region_from_grd(grid_path: str) -> List[float]:
-        """
-        从栅格文件中解析出区域范围 region = [xmin, xmax, ymin, ymax]。
-        Parse region [xmin, xmax, ymin, ymax] from a grid via pygmt.grdinfo.
-
-        参数 (Parameters)
-        ----------
-        grid_path : str
-            栅格文件路径，传入给 pygmt.grdinfo 进行解析。
-            Path to grid file for pygmt.grdinfo.
-
-        返回 (Returns)
-        -------
-        region : List[float]
-            形如 [xmin, xmax, ymin, ymax] 的列表。
-            Region as [xmin, xmax, ymin, ymax].
-
-        异常 (Raises)
-        -------------
-        ValueError
-            当无法从 grdinfo 输出中解析到坐标范围时抛出。
-        """
-        info_text = pygmt.grdinfo(grid=grid_path, per_column="n")
-        values = np.fromstring(info_text, sep=" ")
-        if values.size < 4:
-            raise ValueError(f"无法解析区域范围信息: {grid_path}")
-        return values[:4].astype(float).tolist()
-
-    @staticmethod
-    def tif2grd(
-        tif_path: str,
-        grd_path: str,
-        scale: float = 1.0,
-        nan_to_zero: bool = True,
-    ) -> List[float]:
-        """
-        加载 TIF 文件，应用缩放因子，并转换为 GRD 格式。
-        Load a TIF file, apply a scale factor, and convert it to GRD format.
-
-        参数 (Parameters)
-        ----------
-        tif_path : str
-            原始 TIF 文件路径。
-            Path to the source TIF file.
-        grd_path : str
-            输出 GRD 文件路径。
-            Path where the output GRD file will be saved.
-        scale : float, optional
-            乘数因子，用于转换像素值（默认值为 1.0）。
-            Scale factor to multiply the raster values (default is 1.0).
-        nan_to_zero : bool, optional
-            是否将 NaN 值替换为 0 并视为有效像元；否则保留 NaN（默认 True）。
-            If True, replace NaN with 0 (treated as valid data); if False, preserve NaN (default True).
-
-        返回 (Returns)
-        -------
-        region : List[float]
-            栅格的空间范围 [xmin, xmax, ymin, ymax]。
-            Spatial bounds of the raster in the form [xmin, xmax, ymin, ymax].
-        """
-        source = Path(tif_path).expanduser().resolve()
-        output = Path(grd_path).expanduser().resolve()
-        if not source.is_file():
-            raise FileNotFoundError(f"input GeoTIFF not found: {source}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-        with rasterio.open(source) as src:
-            if src.count < 1:
-                raise ValueError(f"input GeoTIFF has no raster bands: {source}")
-            bounds = src.bounds
-            region = [bounds.left, bounds.right, bounds.bottom, bounds.top]
-            profile = src.profile.copy()
-            profile.update(count=1, dtype=rasterio.float32)
-            if nan_to_zero:
-                profile.update(nodata=0)
-            else:
-                profile.update(nodata=np.nan)
-
-            with temporary_path(output.parent, ".tif") as temporary_tif:
-                with rasterio.open(temporary_tif, "w", **profile) as dst:
-                    for _, window in src.block_windows(1):
-                        data = src.read(1, window=window, masked=True).astype("float32")
-                        scaled = data.filled(np.nan) * np.float32(scale)
-                        if nan_to_zero:
-                            scaled = np.nan_to_num(scaled, nan=0.0)
-                        dst.write(scaled.astype("float32", copy=False), 1, window=window)
-
-                with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
-                    gdal_translate(str(temporary_tif), str(temporary_grd), fmt="GSBG")
-                    replace_dataset(temporary_grd, output)
-
-        print(f"已转换为 GRD: {output}")
-
-        return region
-
-    @staticmethod
-    def txt2grd(
-        txt_path: str,
-        grd_path: str,
-        scale: float = 1.0,
-        space: float = 0.0005,
-        chunk_rows: int = 250_000,
-    ) -> List[float]:
-        """
-        加载 TXT 文件，应用缩放因子，并转换为 GRD 格式。
-        Load a TXT file, apply a scale factor to the third column, and convert it to a GRD file.
-
-        参数 (Parameters)
-        ----------
-        txt_path : str
-            原始 TXT 文件路径，要求包含 'lon' 和 'lat' 表头列。
-            Path to the source TXT file. Requires header with 'lon' and 'lat'.
-        grd_path : str
-            输出 GRD 文件路径。
-            Path where the output GRD file will be saved.
-        scale : float, optional
-            乘数因子，用于转换第三列数据的单位（默认值为 1.0）。
-            Scale factor to multiply the third column values (default is 1.0).
-        space : float, optional
-            生成网格的空间分辨率（度）。
-            Grid spacing in degrees (default 0.0005).
-        chunk_rows : int, optional
-            每次读取的文本行数，用于限制峰值内存（默认 250000）。
-            Number of text rows processed per chunk (default 250000).
-
-        返回 (Returns)
-        -------
-        region : List[float]
-            数据范围 [xmin, xmax, ymin, ymax]。
-            Spatial bounds of the data as [xmin, xmax, ymin, ymax].
-        """
-        source = Path(txt_path).expanduser().resolve()
-        output = Path(grd_path).expanduser().resolve()
-        if not source.is_file():
-            raise FileNotFoundError(f"input text file not found: {source}")
-        if space <= 0:
-            raise ValueError(f"space must be positive; got {space}")
-        if chunk_rows <= 0:
-            raise ValueError(f"chunk_rows must be positive; got {chunk_rows}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-        bounds = [np.inf, -np.inf, np.inf, -np.inf]
-        row_count = 0
-        with temporary_path(output.parent, ".xyz") as temporary_xyz:
-            for chunk in pd.read_csv(source, sep=r"\s+", chunksize=chunk_rows):
-                if len(chunk.columns) < 3 or "lon" not in chunk or "lat" not in chunk:
-                    raise ValueError(
-                        f"text input must contain lon/lat headers and at least three columns: {source}"
-                    )
-                value_column = chunk.columns[2]
-                selected = chunk.loc[:, ["lon", "lat", value_column]].copy()
-                selected["lon"] = pd.to_numeric(selected["lon"], errors="raise")
-                selected["lat"] = pd.to_numeric(selected["lat"], errors="raise")
-                selected[value_column] = pd.to_numeric(selected[value_column], errors="raise") * scale
-                selected = selected[np.isfinite(selected["lon"]) & np.isfinite(selected["lat"])]
-                if selected.empty:
-                    continue
-
-                bounds[0] = min(bounds[0], float(selected["lon"].min()))
-                bounds[1] = max(bounds[1], float(selected["lon"].max()))
-                bounds[2] = min(bounds[2], float(selected["lat"].min()))
-                bounds[3] = max(bounds[3], float(selected["lat"].max()))
-                selected.to_csv(
-                    temporary_xyz,
-                    sep="\t",
-                    columns=["lon", "lat", value_column],
-                    header=False,
-                    index=False,
-                    mode="a",
-                )
-                row_count += len(selected)
-
-            if row_count == 0:
-                raise ValueError(f"text input contains no valid coordinate rows: {source}")
-
-            data_region = [float(value) for value in bounds]
-            x_steps = max(1, int(np.ceil((data_region[1] - data_region[0]) / space)))
-            y_steps = max(1, int(np.ceil((data_region[3] - data_region[2]) / space)))
-            region = [
-                data_region[0],
-                data_region[0] + x_steps * space,
-                data_region[2],
-                data_region[2] + y_steps * space,
-            ]
-            print(f"TXT 数据区域: {data_region}; 对齐后的网格区域: {region}")
-            with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
-                pygmt.xyz2grd(
-                    data=str(temporary_xyz),
-                    region=region,
-                    spacing=space,
-                    outgrid=str(temporary_grd),
-                )
-                replace_dataset(temporary_grd, output)
-
-        print(f"TXT 转换为 GRD 完成: {output}")
-        return region
-
-    @staticmethod
-    def prepare_grid(
-        input_type: str,
-        input_path: str,
-        grd_path: str,
-        scale: float = 1.0,
-        space: float = 0.0005,
-        nan_to_zero: bool = True,
-        chunk_rows: int = 250_000,
-    ) -> List[float]:
-        """Convert a supported raster or point table into a GMT grid."""
-        normalized_type = input_type.strip().lower()
-        if normalized_type == "tif":
-            return PyGMTPlotter.tif2grd(input_path, grd_path, scale, nan_to_zero)
-        if normalized_type == "txt":
-            return PyGMTPlotter.txt2grd(input_path, grd_path, scale, space, chunk_rows)
-        raise ValueError(f"unsupported input_type: {input_type}; choose from tif, txt")
-
-    @staticmethod
-    def prepare_dataset_grid(dataset: Dict[str, object]) -> List[float]:
-        """Prepare a grid from the common dataset configuration schema.
-
-        根据两个绘图入口共用的数据集配置结构生成 GMT GRD，避免在任务脚本中
-        重复维护 TIF/TXT 分支。
-        """
-        required = ("input_type", "input_path", "grd_path", "scale", "space", "nan_to_zero")
-        missing = [key for key in required if key not in dataset]
-        if missing:
-            raise ValueError(f"dataset configuration is missing: {', '.join(missing)}")
-        return PyGMTPlotter.prepare_grid(
-            input_type=str(dataset["input_type"]),
-            input_path=str(dataset["input_path"]),
-            grd_path=str(dataset["grd_path"]),
-            scale=float(dataset["scale"]),
-            space=float(dataset["space"]),
-            nan_to_zero=bool(dataset["nan_to_zero"]),
-            chunk_rows=int(dataset.get("chunk_rows", 250_000)),
-        )
-    
-    @staticmethod
-    def generate_tracks(
-        start_coords: List[Tuple[float, float]],
-        end_coords: List[Tuple[float, float]],
-        num_points: int = 100,
-        pointnames: Optional[List[str]] = None,
-    ) -> Dict[str, np.ndarray]:
-        """
-        生成剖线采样轨迹。
-        Generate evenly‐spaced sampling tracks between start and end coordinates.
-
-        参数 (Parameters)
-        ----------
-        start_coords : List[Tuple[float, float]]
-            剖线起点经纬度列表，每项为 (lon, lat)。
-            List of start coordinates as (lon, lat) tuples.
-        end_coords : List[Tuple[float, float]]
-            剖线终点经纬度列表，每项为 (lon, lat)。
-            List of end coordinates as (lon, lat) tuples.
-        num_points : int, optional
-            每条剖线生成的采样点数量（默认 100）。
-            Number of sampling points per track (default 100).
-        pointnames : List[str], optional
-            每条剖线的名称列表（默认 None，则自动生成 A, B, C…）。
-            Names for each track (if None, generates ['A', 'B', ...]).
-
-        返回 (Returns)
-        -------
-        Dict[str, np.ndarray]
-            字典：键为剖线名称，值为形状 (num_points, 2) 的 [lon, lat] 数组。
-            Dict mapping each name to an (num_points, 2) array of [lon, lat] points.
-        """
-        if len(start_coords) != len(end_coords):
-            raise ValueError(
-                "start_coords and end_coords must have the same length; "
-                f"got {len(start_coords)} and {len(end_coords)}"
-            )
-        if not start_coords:
-            raise ValueError("at least one profile track is required")
-        if num_points < 2:
-            raise ValueError(f"num_points must be at least 2; got {num_points}")
-
-        if pointnames is None:
-            pointnames = [chr(ord("A") + i) for i in range(len(start_coords))]
-        if len(pointnames) != len(start_coords):
-            raise ValueError(
-                "pointnames must match the number of profile tracks; "
-                f"got {len(pointnames)} names and {len(start_coords)} tracks"
-            )
-        if len(set(pointnames)) != len(pointnames):
-            raise ValueError("pointnames must be unique")
-
-        tracks: Dict[str, np.ndarray] = {}
-        # 2. 对每条剖线，生成等间距经纬度并合并 / For each track, generate spaced lons/lats and stack
-        for name, start, end in zip(pointnames, start_coords, end_coords):
-            # 2.1 等间距插值经度 / interpolate longitudes
-            lons = np.linspace(start[0], end[0], num_points)
-            # 2.2 等间距插值纬度 / interpolate latitudes
-            lats = np.linspace(start[1], end[1], num_points)
-            # 2.3 合并为二维数组，每行 [lon, lat] / stack into (num_points, 2) array
-            track = np.column_stack((lons, lats))
-            tracks[name] = track
-        return tracks
-    
-    @staticmethod
-    def extract_profile(
-        grd_file: str,
-        track: np.ndarray,
-        newcolname: str = "z"
-    ) -> pd.DataFrame:
-        """
-        提取剖面并计算累计距离。
-        Extract profile from a GRD along a given track and compute cumulative distance.
-
-        参数 (Parameters)
-        ----------
-        grd_file : str
-            输入 GRD 文件路径。
-            Path to the source GRD file.
-        track : np.ndarray
-            剖线轨迹，二维数组，每行 [lon, lat]。
-            2D array of points [[lon, lat], ...] defining the profile line.
-        newcolname : str, optional
-            提取值列名，默认 "z"。
-            Name of the extracted value column (default "z").
-
-        返回 (Returns)
-        -------
-        pd.DataFrame
-            包含以下列的 DataFrame：
-            - "lon", "lat"：轨迹点经纬度 / longitude and latitude  
-            - newcolname：从 GRD 中提取的值 / extracted values  
-            - "distance"：从起点累计的距离（米） / cumulative distance in meters  
-        """
-        track_array = np.asarray(track, dtype=float)
-        if track_array.ndim != 2 or track_array.shape[1] != 2 or len(track_array) < 2:
-            raise ValueError("track must have shape (n, 2) with at least two lon/lat points")
-
-        profile: pd.DataFrame = pygmt.grdtrack(
-            points=track_array,
-            grid=grd_file,
-            newcolname=newcolname
-        )
-
-        if profile.shape[1] < 3:
-            raise ValueError(f"grdtrack returned fewer than three columns for {grd_file}")
-        profile = profile.iloc[:, :3].copy()
-        profile.columns = ["lon", "lat", newcolname]
-
-        if len(profile) == 0:
-            profile["distance"] = pd.Series(dtype=float)
-            return profile
-
-        geod = Geod(ellps="WGS84")
-        lons = profile["lon"].to_numpy(dtype=float)
-        lats = profile["lat"].to_numpy(dtype=float)
-        _, _, segment_distances = geod.inv(lons[:-1], lats[:-1], lons[1:], lats[1:])
-        profile["distance"] = np.concatenate(([0.0], np.cumsum(segment_distances)))
-
-        return profile
 
     # ------------------------- 绘图步骤方法（无返回值） -------------------------
 

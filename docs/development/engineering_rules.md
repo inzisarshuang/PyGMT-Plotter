@@ -4,13 +4,15 @@ This document explains the repository architecture behind the short rules in `AG
 
 ## Ownership Boundaries
 
-- `lib/plot_config.py`: strict cfg parsing, path resolution, scalar/list parsing, and reusable validation.
-- `lib/pygmt_plotter.py`: grid conversion, profile extraction, and chainable PyGMT drawing primitives.
-- `lib/geodata_preprocess.py`: geospatial raster arithmetic that is independent of figure layout.
+- `lib/pygmt_io.py`: strict cfg parsing, path resolution, scalar/list parsing, temporary files, atomic replacement, and external command wrappers.
+- `lib/pygmt_geo.py`: geospatial raster arithmetic, TIF/TXT conversion, grid regions, profile tracks, and spatial sampling.
+- `lib/pygmt_visual.py`: figure state, map composition, profile drawing, legends, annotations, and final figure output.
 - `plot_*/`: workflow-specific cfg loading and orchestration.
 - `tests/`: fast regression checks using temporary data.
 
 Do not copy conversion branches or configuration parsers into an entry script. Extend the owning shared module when two workflows need the same behavior.
+
+The reusable repository pattern is `I/O -> geospatial preparation -> domain processing -> export or visualization`. Masking and product export are optional ownership areas, not mandatory files. Create `*_mask.py` only for independent mask behavior and `*_export.py` only for external scientific product contracts; ordinary file writing remains I/O, while PNG/PDF output remains visualization.
 
 ## Configuration Compatibility
 

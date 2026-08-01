@@ -1,14 +1,35 @@
 # Python Rules
 
-## Module Responsibilities
+## Module Responsibilities / 模块职责
 
-- 配置语法、路径解析和通用校验放在 `lib/plot_config.py`。
-- 数据转换、剖面抽取和通用绘图原语放在 `lib/pygmt_plotter.py`。
-- 与图幅布局无关的栅格运算放在 `lib/geodata_preprocess.py`。
-- `plot_*` 入口只组织参数和调用，不复制公共 TIF/TXT 分支。
+- Put configuration syntax, path handling, temporary files, external commands, and generic validation in `lib/pygmt_io.py`.<br>配置语法、路径处理、临时文件、外部命令和通用校验放在 `lib/pygmt_io.py`。
+- Put grid conversion, raster arithmetic, track generation, and spatial sampling in `lib/pygmt_geo.py`.<br>网格转换、栅格运算、轨迹生成和空间采样放在 `lib/pygmt_geo.py`。
+- Put figure state and reusable drawing primitives in `lib/pygmt_visual.py`.<br>绘图状态和公共绘图原语放在 `lib/pygmt_visual.py`。
+- Keep `plot_*` entry points focused on parameter normalization and orchestration.<br>`plot_*` 入口只负责参数归一化和流程编排。
+- Add domain, mask, and export modules only when they own independent reusable behavior.<br>只有存在独立且可复用的职责时，才新增领域计算、掩膜或产品导出模块。
 
 ## Interfaces
 
+- Every new production Python file must begin with the following structure. Update `函数说明` whenever a public top-level function or class is added, removed, or renamed.<br>每个新增生产 Python 文件必须以以下结构开头；新增、删除或重命名公共顶层函数和类时，必须同步更新 `函数说明`。
+
+```python
+"""
+module_name
+===========
+
+功能概述:
+    用一到数行说明本模块负责的数据、处理范围和职责边界。
+
+函数说明:
+    ``public_function``:
+        说明该函数的主要输入、处理行为和输出目的。
+    ``PublicClass``:
+        说明该类管理的状态或提供的公共能力。
+"""
+```
+
+- `功能概述` must define what the module owns and what remains outside its boundary. `函数说明` must list every public top-level function and class, grouped by responsibility when useful.<br>`功能概述` 必须说明模块负责和不负责的边界；`函数说明` 必须列出所有公共顶层函数和类，可按职责分组。
+- Private helpers may be omitted from the module list when self-explanatory, but still require function-level docstrings.<br>私有辅助函数可按复杂度决定是否列入模块清单，但仍必须具有函数级 docstring。
 - 每个生产函数和方法（包括私有辅助函数与入口编排函数）都在函数开头用简洁 docstring 说明作用；公共科学接口按需要补充中英文参数、返回值和单位。
 - 运行时输入错误使用 `ValueError`、`FileNotFoundError` 或 `RuntimeError`，不用 `assert`。
 - 外部命令必须使用参数列表和 `subprocess.run(..., check=True)`，不拼接 shell 字符串。

@@ -8,9 +8,9 @@ PyGMT-Plotter 是一个由配置文件驱动的科研绘图库，用于绘制形
 
 - `plot_defo_dem_optic`: convert TIF/TXT deformation data to GRD and draw it over a DEM or optical basemap.<br>将 TIF/TXT 形变数据转换为 GRD，并叠加在 DEM 或光学底图上。
 - `plot_defo_profile`: compare two deformation datasets on maps and along named profile tracks.<br>在地图和指定剖线上比较两套形变数据。
-- `lib/pygmt_plotter.py`: shared grid conversion, profile extraction, and plotting primitives.<br>公共网格转换、剖面提取和绘图原语。
-- `lib/plot_config.py`: strict key-value cfg parsing, path resolution, and validation.<br>严格的键值配置解析、路径解析和参数校验。
-- `lib/geodata_preprocess.py`: windowed raster arithmetic.<br>按窗口执行的栅格运算。
+- `lib/pygmt_io.py`: strict cfg parsing, path resolution, temporary files, atomic replacement, and GDAL command wrappers.<br>严格配置解析、路径处理、临时文件、原子替换和 GDAL 命令封装。
+- `lib/pygmt_geo.py`: bounded-memory raster arithmetic, grid conversion, track generation, and profile extraction.<br>低内存栅格运算、网格转换、轨迹生成和剖面提取。
+- `lib/pygmt_visual.py`: figure state and chainable PyGMT drawing primitives.<br>绘图状态管理和可链式调用的 PyGMT 绘图原语。
 
 ## Repository Layout / 仓库结构
 
@@ -21,9 +21,9 @@ PyGMT-Plotter/
 ├── cpt/                              # shared color palettes / 公共色带
 ├── docs/development/                 # engineering rules / 工程规则
 ├── lib/
-│   ├── geodata_preprocess.py
-│   ├── plot_config.py
-│   └── pygmt_plotter.py
+│   ├── pygmt_geo.py                  # spatial processing / 空间处理
+│   ├── pygmt_io.py                   # config and file I/O / 配置与文件读写
+│   └── pygmt_visual.py               # plotting / 绘图
 ├── plot_defo_dem_optic/
 │   ├── data/                         # tracked example data / 已跟踪示例数据
 │   ├── plot_defo_dem_optic.cfg

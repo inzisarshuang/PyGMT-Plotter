@@ -1,10 +1,97 @@
+"""
+pygmt_io
+========
+
+功能概述:
+    集中提供 PyGMT 绘图流程所需的严格 cfg 解析、路径解析、参数转换、
+    临时文件管理、原子替换和 GDAL 命令调用功能。
+
+函数说明:
+    文件与外部命令:
+        ``gdal_translate``:
+            使用参数列表调用 GDAL，将栅格转换为指定格式。
+        ``temporary_path``:
+            创建唯一临时路径，并在退出上下文时清理文件和 GDAL 边车文件。
+        ``replace_dataset``:
+            原子替换目标栅格，并同步处理 GDAL 边车文件。
+    配置读取与路径:
+        ``_expand_cfg_refs``:
+            展开 cfg 和环境变量引用，并检测循环引用。
+        ``load_key_value_config``:
+            严格读取 key=value 或 key:value 配置文件。
+        ``validate_config_keys``:
+            拒绝未知配置键，并为可能的拼写错误给出建议。
+        ``resolve_path`` / ``resolve_output_path``:
+            根据 cfg 目录和输出目录解析输入、输出路径。
+        ``get_required`` / ``get_optional``:
+            读取必需或可选配置值。
+    参数解析与校验:
+        ``parse_bool`` / ``parse_float`` / ``parse_int``:
+            将人类可读配置值转换为基础数据类型。
+        ``parse_csv_strings`` / ``parse_coord_pairs``:
+            解析逗号分隔字符串和经纬度坐标对。
+        ``parse_choice`` / ``parse_style_block``:
+            解析限定选项和多组绘图样式。
+        ``validate_numeric_range`` / ``validate_closed_range``:
+            校验数值上下界和闭区间约束。
+        ``validate_same_length``:
+            校验多组关联参数具有相同长度。
+"""
+
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import re
+import subprocess
+import tempfile
 from difflib import get_close_matches
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+
+
+def gdal_translate(
+    src: str,
+    dst: str,
+    fmt: str = "GSBG",
+    bands: Optional[Sequence[int]] = None,
+    creation_options: Optional[Sequence[str]] = None,
+) -> None:
+    """Run gdal_translate through the GDAL CLI without requiring osgeo bindings."""
+    cmd = ["gdal_translate", "-of", fmt]
+    for band in bands or []:
+        cmd.extend(["-b", str(band)])
+    for option in creation_options or []:
+        cmd.extend(["-co", option])
+    cmd.extend([src, dst])
+    subprocess.run(cmd, check=True)
+
+
+@contextmanager
+def temporary_path(directory: Path, suffix: str) -> Iterator[Path]:
+    """Yield a unique temporary path and remove it and its GDAL sidecars afterward."""
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=".pygmt_", suffix=suffix, dir=directory)
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink(missing_ok=True)
+    try:
+        yield path
+    finally:
+        for related_path in (path, Path(f"{path}.aux.xml"), Path(f"{path}.ovr")):
+            related_path.unlink(missing_ok=True)
+
+
+def replace_dataset(source: Path, destination: Path) -> None:
+    """Atomically replace a raster and move its GDAL sidecar metadata when present."""
+    os.replace(source, destination)
+    for sidecar_suffix in (".aux.xml", ".ovr"):
+        source_sidecar = Path(f"{source}{sidecar_suffix}")
+        destination_sidecar = Path(f"{destination}{sidecar_suffix}")
+        if source_sidecar.exists():
+            os.replace(source_sidecar, destination_sidecar)
+        else:
+            destination_sidecar.unlink(missing_ok=True)
 
 
 _CFG_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")

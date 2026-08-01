@@ -1,4 +1,35 @@
-"""Draw cfg-driven deformation maps over DEM or optical basemaps."""
+"""
+plot_defo_dem_optic
+===================
+
+功能概述:
+    读取严格 cfg 配置，将 TIF 或 TXT 形变数据转换为 GMT GRD，
+    并在 DEM 或光学影像底图上绘制网格或散点形变结果。
+
+函数说明:
+    ``validate_raw_config``:
+        在参数归一化前检查未知配置键。
+    ``optional_path``:
+        按主键、兼容键和默认值顺序解析可选路径。
+    ``parse_manual_region``:
+        解析可选的手动经纬度绘图范围。
+    ``parse_target_regions``:
+        解析目标区域边界、标签和中心点样式。
+    ``build_parser``:
+        构建命令行参数解析器。
+    ``load_config``:
+        读取、解析并校验地图绘制所需的全部配置。
+    ``draw_basemap``:
+        根据数据集配置绘制 DEM、光学影像或空白底图。
+    ``draw_deformation``:
+        根据配置以网格或散点模式叠加形变数据。
+    ``draw_target_regions``:
+        绘制目标区域边框、中心标记和标签。
+    ``render_map``:
+        组合并保存一个数据集的完整形变地图。
+    ``main``:
+        准备启用的数据网格并依次执行地图绘制流程。
+"""
 
 import argparse
 import re
@@ -9,7 +40,8 @@ import numpy as np
 lib_path = Path(__file__).resolve().parents[1] / "lib"
 sys.path.append(str(lib_path))
 
-from plot_config import (
+from pygmt_geo import prepare_dataset_grid, region_from_grd
+from pygmt_io import (
     get_optional,
     get_required,
     load_key_value_config,
@@ -25,7 +57,7 @@ from plot_config import (
     validate_config_keys,
     validate_numeric_range,
 )
-from pygmt_plotter import PyGMTPlotter
+from pygmt_visual import PyGMTPlotter
 
 
 ALLOWED_KEYS = {
@@ -386,7 +418,7 @@ def draw_target_regions(plotter: PyGMTPlotter, cfg: dict) -> None:
 
 def render_map(plotter: PyGMTPlotter, cfg: dict, dataset_cfg: dict) -> None:
     """Compose and save one complete deformation map for a normalized dataset config."""
-    region = cfg["region"] or plotter.region_from_grd(dataset_cfg["grd_path"])
+    region = cfg["region"] or region_from_grd(dataset_cfg["grd_path"])
     plotter.new()
     plotter.draw_geo_basemap(region=region, projection=cfg["projection"], title=dataset_cfg["title"])
     draw_basemap(plotter, cfg, region, cfg["projection"], dataset_cfg["basemap_mode"])
@@ -414,9 +446,9 @@ def main() -> None:
     args = build_parser().parse_args()
     cfg = load_config(args.config)
 
-    PyGMTPlotter.prepare_dataset_grid(cfg["sbas"])
+    prepare_dataset_grid(cfg["sbas"])
     if cfg["psi"] is not None:
-        PyGMTPlotter.prepare_dataset_grid(cfg["psi"])
+        prepare_dataset_grid(cfg["psi"])
 
     map_style = {**cfg["default_style"], **cfg["map_style"]}
     plotter = PyGMTPlotter(defaults=map_style)

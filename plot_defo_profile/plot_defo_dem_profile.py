@@ -1,4 +1,31 @@
-"""Draw two deformation datasets on maps and along common profile tracks."""
+"""
+plot_defo_dem_profile
+=====================
+
+功能概述:
+    读取严格 cfg 配置，将两套 TIF 或 TXT 形变数据转换为 GMT GRD，
+    绘制各自的形变地图，并沿公共命名轨迹输出折线和散点剖面对比图。
+
+函数说明:
+    ``build_parser``:
+        构建命令行参数解析器。
+    ``load_dataset_cfg``:
+        读取并归一化一个形变数据集的输入和绘图参数。
+    ``load_config``:
+        读取、解析并校验地图、轨迹和剖面绘图配置。
+    ``build_tracks``:
+        根据配置中的起止坐标生成命名剖面轨迹。
+    ``extract_profiles``:
+        沿每条公共轨迹采样全部形变数据集。
+    ``render_map``:
+        绘制并保存包含 DEM、形变、轨迹和标记点的地图。
+    ``profile_output_path``:
+        生成指定轨迹和绘图模式的输出路径。
+    ``render_profiles``:
+        为每条轨迹绘制折线和散点剖面对比图。
+    ``main``:
+        准备网格、提取剖面并执行全部地图和剖面绘图流程。
+"""
 
 import argparse
 import sys
@@ -8,7 +35,8 @@ cpt_path = Path(__file__).resolve().parents[1] / "cpt"
 lib_path = Path(__file__).resolve().parents[1] / "lib"
 sys.path.append(str(lib_path))
 
-from plot_config import (
+from pygmt_geo import extract_profile, generate_tracks, prepare_dataset_grid, region_from_grd
+from pygmt_io import (
     get_optional,
     get_required,
     load_key_value_config,
@@ -26,7 +54,7 @@ from plot_config import (
     validate_numeric_range,
     validate_same_length,
 )
-from pygmt_plotter import PyGMTPlotter
+from pygmt_visual import PyGMTPlotter
 
 
 ALLOWED_KEYS = {
@@ -226,7 +254,7 @@ def load_config(config_path: str) -> dict:
 
 def build_tracks(cfg: dict) -> dict:
     """Generate named lon/lat sampling tracks from normalized cfg coordinates."""
-    return PyGMTPlotter.generate_tracks(
+    return generate_tracks(
         start_coords=cfg["track_start_coords"],
         end_coords=cfg["track_end_coords"],
         num_points=cfg["num_points"],
@@ -240,14 +268,14 @@ def extract_profiles(dataset_cfgs: list[dict], tracks: dict) -> dict:
     for dataset_cfg in dataset_cfgs:
         for track_name in tracks:
             profiles[track_name].append(
-                PyGMTPlotter.extract_profile(dataset_cfg["grd_path"], tracks[track_name])
+                extract_profile(dataset_cfg["grd_path"], tracks[track_name])
             )
     return profiles
 
 
 def render_map(plotter: PyGMTPlotter, cfg: dict, dataset_cfg: dict, tracks: dict) -> None:
     """Compose and save one deformation map with DEM, tracks, and optional marker."""
-    region = plotter.region_from_grd(dataset_cfg["grd_path"])
+    region = region_from_grd(dataset_cfg["grd_path"])
     plotter.new()
     plotter.draw_geo_basemap(region=region, projection=cfg["projection"], title=dataset_cfg["title"])
     plotter.draw_dem(
@@ -364,7 +392,7 @@ def main() -> None:
 
     dataset_cfgs = [cfg["dataset1"], cfg["dataset2"]]
     for dataset_cfg in dataset_cfgs:
-        PyGMTPlotter.prepare_dataset_grid(dataset_cfg)
+        prepare_dataset_grid(dataset_cfg)
 
     tracks = build_tracks(cfg)
     profiles = extract_profiles(dataset_cfgs, tracks)

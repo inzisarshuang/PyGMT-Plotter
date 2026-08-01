@@ -1,4 +1,4 @@
-"""Tests for the human-facing key-value configuration parser."""
+"""Tests for shared plotting configuration and I/O helpers."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "lib"))
 
-from plot_config import load_key_value_config, validate_config_keys
+from pygmt_io import load_key_value_config, validate_config_keys
 
 
 class PlotConfigTests(unittest.TestCase):
