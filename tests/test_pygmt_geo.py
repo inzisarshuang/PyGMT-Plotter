@@ -6,8 +6,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 import rasterio
 from rasterio.transform import from_origin
 
@@ -15,7 +17,7 @@ from rasterio.transform import from_origin
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "lib"))
 
-from pygmt_geo import add_tifs, generate_tracks, tif2grd, txt2grd
+from pygmt_geo import add_tifs, defsour2grd, generate_tracks, tif2grd, txt2grd
 
 
 class AddTifsTests(unittest.TestCase):
@@ -129,6 +131,32 @@ class GridConversionTests(unittest.TestCase):
         )
         self.assertEqual(text_region, [0.0, 1.0, 0.0, 1.0])
         self.assertTrue(text_grid.is_file())
+        self.assertEqual(list(self.root.glob(".pygmt_*")), [])
+
+    def test_converts_headerless_projected_defsour_fourth_column(self) -> None:
+        """Transform Defsour UTM coordinates and select deformation rather than elevation."""
+        source = self.root / "D20200101"
+        source.write_text(
+            "166021.443 0.000 123.000 4.500000\n"
+            "277404.560 110597.973 456.000 -2.000000\n",
+            encoding="utf-8",
+        )
+        output = self.root / "defsour.grd"
+
+        def fake_xyz2grd(*, data, region, spacing, outgrid):
+            """Capture the generated geographic XYZ table and emulate GMT output."""
+            generated = pd.read_csv(data, sep=r"\s+", header=None)
+            self.assertTrue(np.allclose(generated.iloc[:, 2], [4.5, -2.0]))
+            self.assertTrue(np.allclose(generated.iloc[:, 0], [0.0, 0.999697], atol=1.0e-4))
+            self.assertTrue(np.allclose(generated.iloc[:, 1], [0.0, 1.0], atol=1.0e-4))
+            Path(outgrid).write_bytes(b"grid")
+
+        with patch("pygmt_geo.pygmt.xyz2grd", side_effect=fake_xyz2grd):
+            region = defsour2grd(
+                str(source), str(output), "EPSG:32631", space=0.5, chunk_rows=1
+            )
+        self.assertTrue(np.allclose(region, [-7.3e-10, 0.9999999993, 0.0, 1.0], atol=1.0e-6))
+        self.assertTrue(output.is_file())
         self.assertEqual(list(self.root.glob(".pygmt_*")), [])
 
 

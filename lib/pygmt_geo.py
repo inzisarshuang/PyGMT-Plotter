@@ -17,6 +17,8 @@ pygmt_geo
         按窗口读取、缩放 GeoTIFF，并转换为 GMT GRD。
     ``txt2grd``:
         分块读取经纬度点表，缩放数值并转换为 GMT GRD。
+    ``defsour2grd``:
+        读取无表头 X/Y/高程/形变 Defsour 表并重投影到经纬度网格。
     ``prepare_grid``:
         根据输入类型统一调度 TIF 或 TXT 网格转换。
     ``prepare_dataset_grid``:
@@ -36,9 +38,12 @@ import numpy as np
 import pandas as pd
 import pygmt
 import rasterio
-from pyproj import Geod
+from pyproj import CRS, Geod, Transformer
+from rasterio.enums import Resampling
+from rasterio.transform import array_bounds
+from rasterio.warp import calculate_default_transform, reproject
 
-from pygmt_io import gdal_translate, replace_dataset, temporary_path
+from pygmt_io import gmt_grdconvert, replace_dataset, temporary_path
 
 
 def _validate_matching_grids(src1: rasterio.io.DatasetReader, src2: rasterio.io.DatasetReader) -> None:
@@ -128,8 +133,9 @@ def tif2grd(
     grd_path: str,
     scale: float = 1.0,
     nan_to_zero: bool = True,
+    target_crs: str | None = "EPSG:4326",
 ) -> List[float]:
-    """Convert one GeoTIFF band to a scaled GMT grid using windowed reads."""
+    """Convert one GeoTIFF band to a scaled GMT grid, optionally reprojecting it."""
     source = Path(tif_path).expanduser().resolve()
     output = Path(grd_path).expanduser().resolve()
     if not source.is_file():
@@ -139,22 +145,51 @@ def tif2grd(
     with rasterio.open(source) as src:
         if src.count < 1:
             raise ValueError(f"input GeoTIFF has no raster bands: {source}")
-        bounds = src.bounds
-        region = [bounds.left, bounds.right, bounds.bottom, bounds.top]
+        destination_crs = CRS.from_user_input(target_crs) if target_crs else src.crs
+        if destination_crs is None:
+            raise ValueError(f"input GeoTIFF has no CRS and target_crs was not provided: {source}")
+        if src.crs is not None and CRS.from_user_input(src.crs) != destination_crs:
+            transform, width, height = calculate_default_transform(
+                src.crs, destination_crs, src.width, src.height, *src.bounds
+            )
+        else:
+            transform, width, height = src.transform, src.width, src.height
+        left, bottom, right, top = array_bounds(height, width, transform)
+        region = [left, right, bottom, top]
         profile = src.profile.copy()
-        profile.update(count=1, dtype=rasterio.float32, nodata=0 if nan_to_zero else np.nan)
+        profile.update(
+            count=1,
+            width=width,
+            height=height,
+            transform=transform,
+            crs=destination_crs,
+            dtype=rasterio.float32,
+            nodata=0 if nan_to_zero else np.nan,
+        )
 
         with temporary_path(output.parent, ".tif") as temporary_tif:
             with rasterio.open(temporary_tif, "w", **profile) as dst:
-                for _, window in src.block_windows(1):
-                    data = src.read(1, window=window, masked=True).astype("float32")
+                reproject(
+                    source=rasterio.band(src, 1),
+                    destination=rasterio.band(dst, 1),
+                    src_transform=src.transform,
+                    src_crs=src.crs or destination_crs,
+                    src_nodata=src.nodata,
+                    dst_transform=transform,
+                    dst_crs=destination_crs,
+                    dst_nodata=profile["nodata"],
+                    resampling=Resampling.bilinear,
+                )
+            with rasterio.open(temporary_tif, "r+") as dst:
+                for _, window in dst.block_windows(1):
+                    data = dst.read(1, window=window, masked=True).astype("float32")
                     scaled = data.filled(np.nan) * np.float32(scale)
                     if nan_to_zero:
                         scaled = np.nan_to_num(scaled, nan=0.0)
                     dst.write(scaled.astype("float32", copy=False), 1, window=window)
 
             with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
-                gdal_translate(str(temporary_tif), str(temporary_grd), fmt="GSBG")
+                gmt_grdconvert(str(temporary_tif), str(temporary_grd))
                 replace_dataset(temporary_grd, output)
 
     print(f"Converted to GRD: {output}")
@@ -235,6 +270,71 @@ def txt2grd(
     return region
 
 
+def defsour2grd(
+    txt_path: str,
+    grd_path: str,
+    input_crs: str,
+    scale: float = 1.0,
+    space: float = 0.0005,
+    chunk_rows: int = 250_000,
+    deformation_column: int = 3,
+) -> List[float]:
+    """Convert a headerless Defsour X/Y/elevation/deformation table to a WGS84 grid."""
+    source = Path(txt_path).expanduser().resolve()
+    output = Path(grd_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"Defsour text file not found: {source}")
+    if not input_crs:
+        raise ValueError("input_crs is required for Defsour coordinates")
+    if deformation_column < 0:
+        raise ValueError("deformation_column must be a zero-based non-negative index")
+    if space <= 0 or chunk_rows <= 0:
+        raise ValueError("space and chunk_rows must be positive")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    transformer = Transformer.from_crs(input_crs, "EPSG:4326", always_xy=True)
+    bounds = [np.inf, -np.inf, np.inf, -np.inf]
+    row_count = 0
+    usecols = sorted({0, 1, deformation_column})
+    with temporary_path(output.parent, ".xyz") as temporary_xyz:
+        for chunk in pd.read_csv(
+            source,
+            sep=r"\s+",
+            header=None,
+            usecols=usecols,
+            chunksize=chunk_rows,
+        ):
+            x = pd.to_numeric(chunk[0], errors="raise").to_numpy(dtype=float)
+            y = pd.to_numeric(chunk[1], errors="raise").to_numpy(dtype=float)
+            value = pd.to_numeric(chunk[deformation_column], errors="raise").to_numpy(dtype=float)
+            # Lists avoid a pyproj/NumPy scalar-conversion warning for one-row chunks.
+            lon, lat = transformer.transform(x.tolist(), y.tolist())
+            selected = pd.DataFrame({"lon": lon, "lat": lat, "value": value * scale})
+            selected = selected[np.isfinite(selected).all(axis=1)]
+            if selected.empty:
+                continue
+            bounds[0] = min(bounds[0], float(selected["lon"].min()))
+            bounds[1] = max(bounds[1], float(selected["lon"].max()))
+            bounds[2] = min(bounds[2], float(selected["lat"].min()))
+            bounds[3] = max(bounds[3], float(selected["lat"].max()))
+            selected.to_csv(temporary_xyz, sep="\t", header=False, index=False, mode="a")
+            row_count += len(selected)
+        if row_count == 0:
+            raise ValueError(f"Defsour input contains no valid coordinate rows: {source}")
+        x_steps = max(1, int(np.ceil((bounds[1] - bounds[0]) / space)))
+        y_steps = max(1, int(np.ceil((bounds[3] - bounds[2]) / space)))
+        region = [
+            float(bounds[0]),
+            float(bounds[0] + x_steps * space),
+            float(bounds[2]),
+            float(bounds[2] + y_steps * space),
+        ]
+        with temporary_path(output.parent, output.suffix or ".grd") as temporary_grd:
+            pygmt.xyz2grd(data=str(temporary_xyz), region=region, spacing=space, outgrid=str(temporary_grd))
+            replace_dataset(temporary_grd, output)
+    print(f"Converted Defsour table to GRD: {output}")
+    return region
+
+
 def prepare_grid(
     input_type: str,
     input_path: str,
@@ -243,14 +343,27 @@ def prepare_grid(
     space: float = 0.0005,
     nan_to_zero: bool = True,
     chunk_rows: int = 250_000,
+    input_crs: str | None = None,
+    deformation_column: int = 3,
+    target_crs: str | None = "EPSG:4326",
 ) -> List[float]:
-    """Convert a supported raster or point table into a GMT grid."""
+    """Convert a supported raster or point table into a geographic GMT grid."""
     normalized_type = input_type.strip().lower()
     if normalized_type == "tif":
-        return tif2grd(input_path, grd_path, scale, nan_to_zero)
+        return tif2grd(input_path, grd_path, scale, nan_to_zero, target_crs)
     if normalized_type == "txt":
         return txt2grd(input_path, grd_path, scale, space, chunk_rows)
-    raise ValueError(f"unsupported input_type: {input_type}; choose from tif, txt")
+    if normalized_type == "defsour":
+        return defsour2grd(
+            input_path,
+            grd_path,
+            input_crs or "",
+            scale,
+            space,
+            chunk_rows,
+            deformation_column,
+        )
+    raise ValueError(f"unsupported input_type: {input_type}; choose from tif, txt, defsour")
 
 
 def prepare_dataset_grid(dataset: Dict[str, object]) -> List[float]:
@@ -267,6 +380,9 @@ def prepare_dataset_grid(dataset: Dict[str, object]) -> List[float]:
         space=float(dataset["space"]),
         nan_to_zero=bool(dataset["nan_to_zero"]),
         chunk_rows=int(dataset.get("chunk_rows", 250_000)),
+        input_crs=str(dataset.get("input_crs") or "") or None,
+        deformation_column=int(dataset.get("deformation_column", 3)),
+        target_crs=str(dataset.get("target_crs", "EPSG:4326") or "") or None,
     )
 
 

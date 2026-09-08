@@ -19,5 +19,12 @@ env/
 result/
 results/
 
+# ---------- local full-resolution time-series inputs ----------
+# The cfg uses the versioned, spatially representative example table instead.
+plot_defo_timeseries_map/data/def_cum.xyz
+plot_defo_timeseries_map/data/dem.tif
+plot_defo_timeseries_map/data/optic.tif
+plot_defo_timeseries_map/data/copy.kml
+
 # ---------- MacOS ----------
 .DS_Store

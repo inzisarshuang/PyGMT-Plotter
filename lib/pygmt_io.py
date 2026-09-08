@@ -10,6 +10,8 @@ pygmt_io
     文件与外部命令:
         ``gdal_translate``:
             使用参数列表调用 GDAL，将栅格转换为指定格式。
+        ``gmt_grdconvert``:
+            使用 GMT 原生命令将可读栅格转换为 NetCDF 浮点网格。
         ``temporary_path``:
             创建唯一临时路径，并在退出上下文时清理文件和 GDAL 边车文件。
         ``replace_dataset``:
@@ -44,6 +46,7 @@ from contextlib import contextmanager
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from difflib import get_close_matches
 from pathlib import Path
@@ -58,13 +61,22 @@ def gdal_translate(
     creation_options: Optional[Sequence[str]] = None,
 ) -> None:
     """Run gdal_translate through the GDAL CLI without requiring osgeo bindings."""
-    cmd = ["gdal_translate", "-of", fmt]
+    environment_gdal = Path(sys.prefix) / "bin" / "gdal_translate"
+    executable = str(environment_gdal) if environment_gdal.is_file() else "gdal_translate"
+    cmd = [executable, "-of", fmt]
     for band in bands or []:
         cmd.extend(["-b", str(band)])
     for option in creation_options or []:
         cmd.extend(["-co", option])
     cmd.extend([src, dst])
     subprocess.run(cmd, check=True)
+
+
+def gmt_grdconvert(src: str, dst: str) -> None:
+    """Convert a GDAL/GMT-readable raster to an unambiguous NetCDF float grid."""
+    environment_gmt = Path(sys.prefix) / "bin" / "gmt"
+    executable = str(environment_gmt) if environment_gmt.is_file() else "gmt"
+    subprocess.run([executable, "grdconvert", src, f"{dst}=nf"], check=True)
 
 
 @contextmanager

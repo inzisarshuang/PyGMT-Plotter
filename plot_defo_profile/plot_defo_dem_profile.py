@@ -78,6 +78,7 @@ for _prefix in ("dataset1", "dataset2"):
             f"{_prefix}_label", f"{_prefix}_title", f"{_prefix}_input_type",
             f"{_prefix}_input_path", f"{_prefix}_grd", f"{_prefix}_scale",
             f"{_prefix}_space", f"{_prefix}_nan_to_zero", f"{_prefix}_chunk_rows",
+            f"{_prefix}_input_crs", f"{_prefix}_deformation_column", f"{_prefix}_target_crs",
             f"{_prefix}_output_map", f"{_prefix}_line_pen", f"{_prefix}_scatter_style",
             f"{_prefix}_scatter_fill", f"{_prefix}_scatter_pen",
             f"{_prefix}_scatter_transparency",
@@ -112,7 +113,7 @@ def load_dataset_cfg(
         "label": get_optional(cfg, f"{prefix}_label", default_output_stub),
         "title": get_optional(cfg, f"{prefix}_title", default_title),
         "input_type": parse_choice(
-            get_optional(cfg, f"{prefix}_input_type", "tif"), ("tif", "txt"), f"{prefix}_input_type"
+            get_optional(cfg, f"{prefix}_input_type", "tif"), ("tif", "txt", "defsour"), f"{prefix}_input_type"
         ),
         "input_path": resolve_path(get_required(cfg, f"{prefix}_input_path"), base_dir),
         "grd_path": resolve_path(get_optional(cfg, f"{prefix}_grd", grd_default), base_dir),
@@ -120,6 +121,9 @@ def load_dataset_cfg(
         "space": parse_float(get_optional(cfg, f"{prefix}_space", ""), 0.003),
         "nan_to_zero": parse_bool(get_optional(cfg, f"{prefix}_nan_to_zero", ""), True),
         "chunk_rows": parse_int(get_optional(cfg, f"{prefix}_chunk_rows", ""), 250_000),
+        "input_crs": get_optional(cfg, f"{prefix}_input_crs", ""),
+        "deformation_column": parse_int(get_optional(cfg, f"{prefix}_deformation_column", ""), 3),
+        "target_crs": get_optional(cfg, f"{prefix}_target_crs", "EPSG:4326"),
         "output_map": resolve_output_path(
             get_optional(cfg, f"{prefix}_output_map", f"{default_output_stub}.png"),
             output_dir,
@@ -246,6 +250,10 @@ def load_config(config_path: str) -> dict:
             raise ValueError(f"{prefix}_space must be positive")
         if dataset["chunk_rows"] <= 0:
             raise ValueError(f"{prefix}_chunk_rows must be positive")
+        if dataset["input_type"] == "defsour" and not dataset["input_crs"]:
+            raise ValueError(f"{prefix}_input_crs is required for Defsour input")
+        if dataset["deformation_column"] < 0:
+            raise ValueError(f"{prefix}_deformation_column must be non-negative")
         validate_closed_range(
             dataset["scatter_transparency"], f"{prefix}_scatter_transparency", 0, 100
         )

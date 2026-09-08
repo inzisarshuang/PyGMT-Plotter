@@ -56,6 +56,7 @@ from pygmt_io import gdal_translate, replace_dataset, temporary_path
 DEFAULTS = dict(
     FONT_TITLE="20p,Helvetica-Bold",
     FONT_ANNOT_PRIMARY="12p,Helvetica-Bold",
+    FONT_ANNOT_SECONDARY="12p,Helvetica-Bold",
     FONT_LABEL="20p,Helvetica-Bold",
 )
 
@@ -155,7 +156,12 @@ class PyGMTPlotter:
         self.defaults = self._base_defaults.copy()
         return self
 
-    def save(self, output_file: str) -> "PyGMTPlotter":
+    def save(
+        self,
+        output_file: str,
+        dpi: int = 300,
+        canvas_margin: str | None = None,
+    ) -> "PyGMTPlotter":
         """
         保存当前图像到文件。
         Save current figure to file.
@@ -165,6 +171,12 @@ class PyGMTPlotter:
         output_file : str
             输出文件路径（例如 "SBAS_AllRegion.png"）。
             Output file path (e.g., "SBAS_AllRegion.png").
+        dpi : int, optional
+            Raster output resolution. Vector formats retain vector geometry.
+            栅格图输出分辨率；矢量格式仍保留矢量几何。
+        canvas_margin : str or None, optional
+            Extra margin around GMT's tight bounding box, such as ``"0.35c"``.
+            GMT 紧致裁剪边界外的附加留白，例如 ``"0.35c"``。
 
         返回 (Returns)
         -------
@@ -175,9 +187,14 @@ class PyGMTPlotter:
         output = Path(output_file).expanduser().resolve()
         if not output.suffix:
             raise ValueError(f"output file must include an extension: {output_file}")
+        if dpi <= 0:
+            raise ValueError(f"dpi must be positive; got {dpi}")
         output.parent.mkdir(parents=True, exist_ok=True)
         with temporary_path(output.parent, output.suffix) as temporary_output:
-            figure.savefig(str(temporary_output))
+            save_options = {"dpi": dpi}
+            if canvas_margin:
+                save_options["resize"] = f"+m{canvas_margin}"
+            figure.savefig(str(temporary_output), **save_options)
             os.replace(temporary_output, output)
         print(f"图像已保存：{output_file}")
         return self

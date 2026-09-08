@@ -78,7 +78,8 @@ for _prefix in ("sbas", "psi"):
             f"{_prefix}_input_path", f"{_prefix}_input_type", f"{_prefix}_grd",
             f"{_prefix}_scale", f"{_prefix}_space", f"{_prefix}_nan_to_zero",
             f"{_prefix}_chunk_rows", f"{_prefix}_title", f"{_prefix}_basemap_mode",
-            f"{_prefix}_defo_mode", f"output_{_prefix}",
+            f"{_prefix}_defo_mode", f"output_{_prefix}", f"{_prefix}_input_crs",
+            f"{_prefix}_deformation_column", f"{_prefix}_target_crs",
         }
     )
 
@@ -188,7 +189,7 @@ def load_config(config_path: str) -> dict:
 
     sbas_cfg = {
         "input_type": parse_choice(
-            get_optional(cfg, "sbas_input_type", "tif"), ("tif", "txt"), "sbas_input_type"
+            get_optional(cfg, "sbas_input_type", "tif"), ("tif", "txt", "defsour"), "sbas_input_type"
         ),
         "input_path": resolve_path(get_required(cfg, "sbas_input_path"), base_dir),
         "grd_path": sbas_grd,
@@ -196,6 +197,9 @@ def load_config(config_path: str) -> dict:
         "space": parse_float(get_optional(cfg, "sbas_space", ""), 0.0005),
         "nan_to_zero": parse_bool(get_optional(cfg, "sbas_nan_to_zero", ""), True),
         "chunk_rows": parse_int(get_optional(cfg, "sbas_chunk_rows", ""), 250_000),
+        "input_crs": get_optional(cfg, "sbas_input_crs", ""),
+        "deformation_column": parse_int(get_optional(cfg, "sbas_deformation_column", ""), 3),
+        "target_crs": get_optional(cfg, "sbas_target_crs", "EPSG:4326"),
         "title": get_optional(cfg, "sbas_title", "Deformation: SBAS"),
         "defo_mode": parse_choice(
             get_optional(cfg, "sbas_defo_mode", "grd"), ("grd", "scatter"), "sbas_defo_mode"
@@ -215,7 +219,7 @@ def load_config(config_path: str) -> dict:
     if get_optional(cfg, "psi_input_path", ""):
         psi_cfg = {
             "input_type": parse_choice(
-                get_optional(cfg, "psi_input_type", "txt"), ("tif", "txt"), "psi_input_type"
+                get_optional(cfg, "psi_input_type", "txt"), ("tif", "txt", "defsour"), "psi_input_type"
             ),
             "input_path": resolve_path(get_required(cfg, "psi_input_path"), base_dir),
             "grd_path": psi_grd,
@@ -223,6 +227,9 @@ def load_config(config_path: str) -> dict:
             "space": parse_float(get_optional(cfg, "psi_space", ""), 0.0005),
             "nan_to_zero": parse_bool(get_optional(cfg, "psi_nan_to_zero", ""), True),
             "chunk_rows": parse_int(get_optional(cfg, "psi_chunk_rows", ""), 250_000),
+            "input_crs": get_optional(cfg, "psi_input_crs", ""),
+            "deformation_column": parse_int(get_optional(cfg, "psi_deformation_column", ""), 3),
+            "target_crs": get_optional(cfg, "psi_target_crs", "EPSG:4326"),
             "title": get_optional(cfg, "psi_title", "Deformation: PSI"),
             "defo_mode": parse_choice(
                 get_optional(cfg, "psi_defo_mode", "scatter"),
@@ -310,6 +317,10 @@ def load_config(config_path: str) -> dict:
             raise ValueError(f"{name}_space must be positive")
         if dataset["chunk_rows"] <= 0:
             raise ValueError(f"{name}_chunk_rows must be positive")
+        if dataset["input_type"] == "defsour" and not dataset["input_crs"]:
+            raise ValueError(f"{name}_input_crs is required for Defsour input")
+        if dataset["deformation_column"] < 0:
+            raise ValueError(f"{name}_deformation_column must be non-negative")
     return conf
 
 

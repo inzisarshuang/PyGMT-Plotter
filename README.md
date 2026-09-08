@@ -18,6 +18,8 @@ PyGMT-Plotter/
 │   └── pygmt_visual.py               # plotting / 绘图
 ├── plot_defo_dem_optic/              # deformation map workflow / 形变地图流程
 ├── plot_defo_profile/                # map and profile workflow / 地图与剖面流程
+├── plot_defo_timeseries_map/          # spatial time-series panels / 空间时序子图
+├── plot_defo_timeseries_aux/          # deformation and auxiliary series / 形变与辅助时序
 ├── tests/                            # regression tests / 回归测试
 └── requirements.txt                  # Python dependencies / Python 依赖
 ```
@@ -38,9 +40,9 @@ The tracked example datasets allow both workflows to run after cloning. Generate
 
 ### 2.1 Deformation Map / 形变地图
 
-`plot_defo_dem_optic` converts TIF or TXT deformation data to GMT GRD and draws it over a DEM, optical image, or blank basemap.
+`plot_defo_dem_optic` converts TIF, lon/lat TXT, or Defsour deformation data to GMT GRD and draws it over a DEM, optical image, or blank basemap.
 
-`plot_defo_dem_optic` 将 TIF 或 TXT 形变数据转换为 GMT GRD，并叠加到 DEM、光学影像或空白底图。
+`plot_defo_dem_optic` 将 TIF、经纬度 TXT 或 Defsour 形变数据转换为 GMT GRD，并叠加到 DEM、光学影像或空白底图。
 
 1. Read and validate the cfg file, including paths, units, color limits, transparency, and styles.<br>读取并校验 cfg 中的路径、单位、色标范围、透明度和样式。
 2. Convert the enabled SBAS and PSI datasets to GMT GRD using windowed raster or chunked table reads.<br>通过栅格窗口或文本分块读取，将启用的 SBAS 和 PSI 数据转换为 GMT GRD。
@@ -59,6 +61,10 @@ The tracked example datasets allow both workflows to run after cloning. Generate
 4. Export one map per dataset and optional line or scatter comparison figures per track.<br>为每套数据输出地图，并按剖线选择输出折线或散点对比图。
 
 ### 2.3 Library Responsibilities / 函数库职责
+
+`plot_defo_timeseries_map` provides cfg-driven multi-epoch geographic panels. `plot_defo_timeseries_aux` provides a shared-date-axis deformation, fit, precipitation, and temperature figure. Each workflow keeps its example input under its own `data/` directory and writes figures under `result/`.
+
+`plot_defo_timeseries_map` 提供 cfg 驱动的多期地理子图；`plot_defo_timeseries_aux` 提供共享日期轴的形变、拟合、降水和温度组合图。每个流程的示例输入位于自身 `data/` 目录，结果写入 `result/`。
 
 - `lib/pygmt_io.py`: strict cfg parsing, path resolution, parameter validation, temporary files, atomic replacement, and GDAL command wrappers.<br>负责严格 cfg 解析、路径处理、参数校验、临时文件、原子替换和 GDAL 命令封装。
 - `lib/pygmt_geo.py`: raster arithmetic, TIF/TXT conversion, grid regions, track generation, and profile extraction.<br>负责栅格运算、TIF/TXT 转换、网格范围、轨迹生成和剖面提取。
@@ -116,14 +122,38 @@ conda run -n envPlot python plot_defo_profile/plot_defo_dem_profile.py \
   --config plot_defo_profile/plot_defo_dem_profile.cfg
 ```
 
+### 4.3 Spatial Time-Series Panels / 空间时序子图
+
+```bash
+conda run -n envPlot python plot_defo_timeseries_map/plot_defo_timeseries_map.py \
+  --config plot_defo_timeseries_map/plot_defo_timeseries_map.cfg
+```
+
+### 4.4 Deformation And Auxiliary Series / 形变与辅助时序
+
+```bash
+conda run -n envPlot python plot_defo_timeseries_aux/plot_defo_timeseries_aux.py \
+  --config plot_defo_timeseries_aux/plot_defo_timeseries_aux.cfg
+```
+
 Each example cfg documents every supported key, unit, valid choice, and output option. Unknown, duplicate, malformed, or inconsistent settings fail before plotting. Hex colors such as `#1f77b4` are accepted directly.
 
 每个示例 cfg 均说明支持的配置键、单位、可选值和输出选项。未知、重复、格式错误或相互矛盾的参数会在绘图前报错；可直接使用 `#1f77b4` 等十六进制颜色。
 
 ## 5. Data And Output Behavior / 数据与输出行为
 
+- Example text inputs use explicit, unit-bearing headers. Geographic point
+  tables start with `lon lat`; auxiliary tables start with `date_yyyymmdd`;
+  spatial time-series columns use
+  `epoch_NNN_deformation_YYYYMMDD_mm` and are checked against
+  `epoch_index date_yyyymmdd` in the dates table.<br>示例文本输入均使用包含单位的明确表头。地理点表以 `lon lat` 开头，辅助时序表以 `date_yyyymmdd` 开头；空间时序列使用 `epoch_NNN_deformation_YYYYMMDD_mm`，并与日期表中的 `epoch_index date_yyyymmdd` 逐列核对。
+- The repository versions a spatially representative time-series example;
+  full-resolution local tables remain ignored because GitHub rejects files
+  larger than 100 MB.<br>仓库保存具有空间代表性的时序示例；完整分辨率本地表保持忽略，因为 GitHub 拒绝超过 100 MB 的单个文件。
 - TIF conversion reads raster blocks instead of loading a complete scene into memory.<br>TIF 转换按栅格块读取，不将整景数据一次性载入内存。
 - TXT point tables are scaled and passed to GMT in configurable chunks through `*_chunk_rows`.<br>TXT 点表按 `*_chunk_rows` 配置分块缩放并交给 GMT。
+- Headerless Defsour tables use zero-based columns `X=0`, `Y=1`, `elevation=2`, and `deformation=3`; configure `*_input_crs` and use `*_input_type=defsour`. Coordinates are transformed to WGS84 before gridding.<br>无表头 Defsour 表使用零基列号 `X=0`、`Y=1`、`高程=2`、`形变=3`；设置 `*_input_crs` 并选择 `*_input_type=defsour`，制网前自动转换到 WGS84。
+- Projected GeoTIFF inputs are reprojected to WGS84 by default; set `*_target_crs` explicitly only when a non-geographic plotting workflow requires it.<br>投影 GeoTIFF 默认重投影到 WGS84；只有非地理绘图流程才应显式修改 `*_target_crs`。
 - Pixel-wise raster arithmetic requires matching dimensions, transforms, and coordinate reference systems.<br>逐像元栅格运算要求尺寸、仿射变换和坐标参考系一致。
 - Zero and nodata remain distinct; conversion occurs only through explicit cfg options such as `*_nan_to_zero`.<br>零值与 nodata 始终区分，仅通过 `*_nan_to_zero` 等显式配置执行转换。
 - Grid scatter plots use temporary XYZ files instead of materializing a full Pandas DataFrame.<br>网格散点通过临时 XYZ 文件交给 GMT，不构造完整 Pandas DataFrame。
@@ -135,7 +165,7 @@ Each example cfg documents every supported key, unit, valid choice, and output o
 ### 6.1 Automated Checks / 自动检查
 
 ```bash
-python -m py_compile lib/*.py plot_defo_dem_optic/*.py plot_defo_profile/*.py
+python -m py_compile lib/*.py plot_defo_*/*.py
 python -m unittest discover -s tests -v
 git diff --check
 ```
